@@ -9,6 +9,7 @@ use Assert;
 use Digest::MD5 qw(md5_hex);
 use DBI;
 use Error qw(:try);
+use CGI ();
 
 use Foswiki::Func    ();
 
@@ -23,11 +24,14 @@ our $protectEnd        = '!&lt;ProtectEnd&gt;';
 
 our %queries;
 our %subquery_map;
+our $connections = undef;
 
 use constant MAXRECURSIONLEVEL => 100;
 
 sub initPlugin {
     my ( $topic, $web, $user, $installWeb ) = @_;
+
+    $connections = $Foswiki::cfg{Plugins}{DBIQueryPlugin}{dbi_connections};
 
     return 1;
 }
@@ -59,7 +63,7 @@ sub warning(@) {
 
 sub db_set_codepage {
     my $conname    = shift;
-    my $connection = $Foswiki::cfg{DBIQueryPlugin}{dbi_connections}->{$conname};
+    my $connection = $connections->{$conname};
     if ( $connection->{codepage} ) {
         if ( $connection->{driver} =~ /^(mysql|Pg)$/ ) {
             $connection->{dbh}->do("SET NAMES $connection->{codepage}");
@@ -84,7 +88,7 @@ needed. =$db_identifier= parameter is database ID as specified in the
 
 sub db_connect {
     my $conname    = shift;
-    my $connection = $Foswiki::cfg{DBIQueryPlugin}{dbi_connections}->{$conname};
+    my $connection = $connections->{$conname};
     my @required_fields = qw(database driver);
     my $curUser         = Foswiki::Func::getWikiUserName();
 
@@ -165,16 +169,16 @@ sub db_connect {
 
 sub db_disconnect {
     foreach
-      my $conname ( keys %{ $Foswiki::cfg{DBIQueryPlugin}{dbi_connections} } )
+      my $conname ( keys %$connections )
     {
-        if ( $Foswiki::cfg{DBIQueryPlugin}{dbi_connections}->{$conname}{dbh} ) {
-            $Foswiki::cfg{DBIQueryPlugin}{dbi_connections}->{$conname}{dbh}
+        if ( $connections->{$conname}{dbh} ) {
+            $connections->{$conname}{dbh}
               ->commit
-              unless $Foswiki::cfg{DBIQueryPlugin}{dbi_connections}
+              unless $connections
                   ->{$conname}{dbh}{AutoCommit};
-            $Foswiki::cfg{DBIQueryPlugin}{dbi_connections}->{$conname}{dbh}
+            $connections->{$conname}{dbh}
               ->disconnect;
-            delete $Foswiki::cfg{DBIQueryPlugin}{dbi_connections}
+            delete $connections
               ->{$conname}{dbh};
         }
     }
@@ -204,7 +208,7 @@ sub protectValue {
     $val =~ s/\\(n|r)/\\\\$1/gs;
     $val =~ s/\n/\\n/gs;
     $val =~ s/\r/\\r/gs;
-    $val = escapeHTML($val);
+    $val = CGI::escapeHTML($val);
     return "${protectStart}${val}${protectEnd}";
 }
 
@@ -274,10 +278,10 @@ sub storeDoQuery {
     %params  = query_params($param_str);
     $conname = $params{_DEFAULT};
 
-    return wikiErrMsg("This DBI connection is not defined.")
-      unless defined $Foswiki::cfg{DBIQueryPlugin}{dbi_connections}->{$conname};
+    return wikiErrMsg("$conname DBI connection is not defined.")
+      unless defined $connections->{$conname};
 
-    my $connection = $Foswiki::cfg{DBIQueryPlugin}{dbi_connections}->{$conname};
+    my $connection = $connections->{$conname};
 
     my $section =
 "$Foswiki::Plugins::SESSION->{webName}.$$Foswiki::Plugins::SESSION->{topicName}";
@@ -368,8 +372,8 @@ sub storeQuery {
     %params  = query_params($param_str);
     $conname = $params{_DEFAULT};
 
-    return wikiErrMsg("This DBI connection is not defined.")
-      unless defined $Foswiki::cfg{DBIQueryPlugin}{dbi_connections}->{$conname};
+    return wikiErrMsg("$conname DBI connection is not defined.")
+      unless defined $connections->{$conname};
 
     my $qid = newQID;
 
@@ -546,7 +550,7 @@ sub getQueryResult {
                     $col = $out_col;
                 }
                 $row->{$col} = '_NULL_' unless defined $row->{$col};
-                $row->{$col} = nl2br( escapeHTML( $row->{$col} ) )
+                $row->{$col} = nl2br( CGI::escapeHTML( $row->{$col} ) )
                   unless defined $params->{unquoted}{$col};
                 $row->{$col} = protectValue( $row->{$col} )
                   if $params->{protected}{$col};
