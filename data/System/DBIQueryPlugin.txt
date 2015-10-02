@@ -1,16 +1,21 @@
-<!--
-   * Set SHORTDESCRIPTION = %$SHORTDESCRIPTION%
--->
+%META:TOPICINFO{author="VadimBelman" comment="" date="1443825457" format="1.1" reprev="2" version="2"}%
+%META:TOPICPARENT{name="Plugins"}%
+---+!! Empty Plugin
 
----+!! DBI Query Plugin
-
-This plugin is intended to provide the ability to make complex database requests using DBI Perl module.
+%SHORTDESCRIPTION%
 
 %TOC%
 
+---++ Overview
+
+This plugin is intended to provide Foswiki with ability to make complex database requests using DBI Perl module.
+
+%X% Any help with this documentation is very much welcome as it's really pretty far from being ideal. Thanks a lot!
+
 ---++ Syntax Rules
 
-   * Syntax:
+__Examples:__
+
 <pre>
 %<nop>DBI_QUERY{"db_identifier" ...}%
 SELECT ...
@@ -36,90 +41,28 @@ footer
 %DBI_CODE%
 </pre>
 
----+++ DBI_QUERY
-
-Each query consist of two parts: a query statement (=SELECT=) and output formatting filters. SQL statement starts just after the leading =%<nop>DBI_QUERY{...}%= declaration. The filters are defined by =.header=, =.body=, and =.footer= keywords each starting at the beginning of line.  Their meaning shall be obvious from their name:
-
-|*Declaration*|*Description*|
-|=.header=|It is prepended to the query output once.|
-|=.body=|It is repeated for each row of data being fetched from the database.|
-|=.footer=|It is appended to the query output.|
-
-Read below on how this plugin works in order to get more detailed explanation of the meaning of each syntax element.
-
-   * Parameters:
-
-|*Parameter*|*Description*|*Default*|*Required*|
-|"db_identifier"|Database ID as defined in the plugin configuration. See [[#PluginConfig][plugin configuration]] section.|_none_|required|
-|subquery="name"|Defines a subquery which does not produce immediate result but could be used from inside another query|_none_|optional|
-|unquoted="col1 col2 ..."|List of columns to be left unquoted in the output. Read more in [[#ValueQuoting][Quoting of Values]] section.|_none_|optional|
-|protected="col1 col2 ..."|List of columns to be protected from processing by the wiki engine.|_none_|optional|
-
-A small note on =protected= parameter. Say, one has an arbitrary data in a displayed column which could contain any kind of text strings. What happens if a wiki macro is found in a string? It gets expanded, for sure. Adding this columns to the =protected= list prevents the expansion. Precisely saying, the whole purpose of protection is displaying of data as is, without any modification.
+---++ Syntax
+#DbiQuerySyntax
+%INCLUDE{VarDBI_QUERY}%
 
 #DbiDoSyntax
----+++ DBI_DO
+%INCLUDE{VarDBI_DO}%
 
-As a matter of fact, =%<nop>DBI_DO{...}%= is nothing but a Perl CGI script stored within the wiki. There are three ways to store it:
+#DbiCallSyntax
+%INCLUDE{VarDBI_CALL}%
 
-   1. In place, just between starting =%<nop>DBI_DO{...}%= and ending =%<nop>DBI_DO%=.
-   1. In a separate topic which would be then the script on its own.
-   1. Several scripts in a topic using =%<nop>DBI_CODE{...}%=.
+#DbiCodeSyntax
+%INCLUDE{VarDBI_CODE}%
 
-   * Parameters
-
-|*Parameter*|*Description*|*Default*|*Required*|
-|"db_identifier"|Database ID as defined in the plugin configuration. See [[#PluginInstallation][Plugin Installation]] section.|_none_|required|
-|multivalued="par1 par2 ..."|Defines HTTP parameters expected to contain several values. These could be, for instance, either values from checkboxes or multiselection lists.|_none_|optional|
-|subquery="name"|Defines a subquery which does not produce immediate result but could be used from inside another query|_none_|optional|
-|topic="SomeTopic"|Topic to read script from.|_none_|optional|
-|script="name"|Specific script defined by its name from several stored in a topic.|_none_|optional|
-|name="do_name"|Informational parameter which defines in-place stored script name.|_none_|optional|
-
----+++ DBI_CALL
-
-=%<nop>DBI_CALL{...}%= directly calls a subquery.
-
-   * Parameters
-
-|*Parameter*|*Description*|*Default*|*Required*|
-|"subquery"|Subquery to call.|_none_|required|
-
-Moreover, named parameters are transfered to a subquery as if they are columns of a database record. Consider the following example:
-
-<pre>
-%<nop>DBI_CALL{"example" uid="12"}%
-
-%<nop>DBI_QUERY{"db_identifier" subquery="example"}%
-SELECT
-    name
-  FROM
-    Users
-  WHERE
-    id = %uid%
-.header
-....
-%DBI_QUERY%
-</pre>
-
-%X% Read more in [[#ValueExpansion][Variable Expansion]] section.
-
----+++ DBI_CODE
-
-=%<nop>DBI_CODE{...}%= is used for keeping several =%<nop>DBI_DO%= scripts within single topic. A script is kept between starting =%<nop>DBI_CODE{...}%= and ending =%<nop>DBI_CODE%=. Output is formatted as a table representing script's name and code.
-
-   * Parameters
-
-|*Parameter*|*Description*|*Default*|*Required*|
-|"script_name"|Name of the script. Must be unique within topic.|_none_|required|
-
-%T% *Note:* Special support is provided for [[Foswiki:Extensions.SourceHighlightPlugin][SourceHighlightPlugin]]. Read more in [[#DbiDo][DBI_DO implementation]] section.
-
----++ How it works.
+---++ How it works
 
 ---+++ DBI_QUERY
 
-This plugin has been written with the idea in mind that table is not the only way to represent database content. Therefore some more flexibility is required in order to format a query result. Yet, what could provide more control over the output than templates keeping it all as simple as possible?
+This plugin has been written with the idea in mind that table is not the
+only way to represent database content. Therefore some more flexibility is
+required in order to format a query result. Yet, what could provide more
+control over the output than templates keeping it all as simple as
+possible?
 
 With this view in mind we come to the following procedure:
 
@@ -127,15 +70,22 @@ With this view in mind we come to the following procedure:
       1. Query statement is exctracted from the definition.
       1. Every newline within =.header=, =.body=, and =.footer= gets changed with space except for the last ones. They're removed. Whereas newline is needed =\n= escape sequence must be used. Consequently, =\\n= is translated into =\n=.
    1. All queries are processed except for those declared as subqueries:
-      1. =.header= filter is expanded with [[#ValueExpansion][variable expansion]] mechanizm and put into the output.
-      1. The query statement is expanded using !DBIQueryPlugin and macro expansion mechanisms in the order they are mentioned here.
+      1. =.header= filter is expanded with [[#VariableExpansion][variable expansion]] mechanizm and put into the output.
+      1. The query statement is expanded using !DBIQueryPlugin and %WIKITOOLNAME% variable expansion mechanisms in the order they are mentioned here.
       1. Database is queried and data is fetched row-by-row. Each row data get [[#ValueQuoting][quoted]] and then used for setting !DBIQueryPlugin variables. =.body= filter is expanded using these values.
       1. =.footer= filter is expanded with !DBIQueryPlugin mechanism and put into the output.
+      1. Afterwards we let %WIKITOOLNAME% to deal with the output (expand variables, pass it through other plugins, whatsoever).
 
-#ValueExpansion
+#VariableExpansion
 ---++++ Variable Expansion
 
-The first step of expansion is done by changing every =%column%= variable found in a text being expanded with corresponding value from the database. Variable names are in fact table column names as they're declared in the SQL statement and returned by [[http://search.cpan.org/~timb/DBI-1.48/DBI.pm#fetchrow_hashref][DBI module]]. =NAME_lc= case conversion performed so that every name is in lowercase. For instance, the following =SELECT=:
+The first step of expansion is done by changing every =%column%= variable
+found in a text being expanded with corresponding value from the database.
+Variable names are in fact table column names as they're declared in the
+SQL statement and returned by
+[[http://search.cpan.org/~timb/DBI-1.48/DBI.pm#fetchrow_hashref][DBI
+module]]. =NAME_lc= case conversion performed so that every name is in
+lowercase. For instance, the following =SELECT=:
 
 <pre>
 SELECT
@@ -148,19 +98,34 @@ SELECT
 
 would provide us with variables =%name%=, =%personalid%=, =%someotherinfo%=.
 
-There are some special cases like =SHOW CREATE PROCEDURE= query where column names may contain spaces within them. These spaces are changed with undersocre sign making it possible to refer to them as to database columns. I.e. 'Create Procedure' may be referred as =%<nop>create_procedure%=.
+There are some special cases like !MySQL's =SHOW CREATE PROCEDURE= where
+column names may contain spaces within them. These spaces are changed with
+undersocre sign making it possible to refer to them as to database columns.
+I.e. 'Create Procedure' field may be referred as =%<nop>create_procedure%=.
 
-The second step is [[#ProcSubqueries][subquery processing]]. =%DBI_SUBQUERY{"subqueryname"}%= statements are replaced with output from corresponding subqueries. All currently defined variables are passed to the subquery making it possible to use them for SQL statement, header and footer expansion.
+The second step is [[#ProcSubqueries][subquery processing]].
+=%DBI_SUBQUERY{"subqueryname"}%= statements are replaced with output from
+corresponding subqueries. All currently defined variables are passed to the
+subquery making it possible to use them for SQL statement, header and
+footer expansion.
 
 #ValueQuoting
 ---++++ Quoting of Values
 
-Values fetched from database are quoted using =[[http://search.cpan.org/~lds/CGI.pm-3.11/CGI.pm#AUTOESCAPING_HTML][CGI::escapeHTML()]]= unless contrary behaviour dictated by =unquoted= parameter. Then every newline character is changed with macro =%<nop>BR%=.
+Values fetched from database are quoted using
+=[[http://search.cpan.org/~lds/CGI.pm-3.11/CGI.pm#AUTOESCAPING_HTML][CGI::escapeHTML()]]=
+unless otherwise ordered by =unquoted= parameter. Then every
+newline character is changed with %WIKITOOLNAME% variable =%<nop>BR%=.
 
 #ProcSubqueries
 ---++++ Subqueries
 
-Subqueries are processed in same manner as common queries. The only thing which makes them slightly different in behaviour is the fact that they can use column values (variables) from the parent queries. It is also possible to have a chain of subqueries: <code>top_query -&gt; subquery1 -&gt; subquery2 -&gt; ...</code>, in which case all variables from all the calling queries are accessible.
+Subqueries are processed in same manner as common queries. The only thing
+which makes them slightly different in behaviour is the fact that they can
+use column values (variables) from the parent queries. It is also possible
+to have a chain of subqueries: <code>top_query -&gt; subquery1 -&gt;
+subquery2 -&gt; ...</code>, in which case all variables from all the
+calling queries are accessible.
 
 For instance, in the following code:
 
@@ -182,14 +147,14 @@ we choose only the rows which are somehow related to a row in a parent query. Of
 <div style="padding-left: 4em">
 %X% %RED% __Warning:__ %ENDCOLOR% Column names may overlap with parent queries. In this case parent has influence over child's SQL statement, header and footer definitions; whereas =.body= uses subquery column names. Take care of this! Best of all avoid this situation by using SQL aliasing:
 
-*Parent:*
+__Parent:__
 
 <pre>
 SELECT col1 as parent_col1
 ....
 </pre>
 
-*Subquery:*
+__Subquery:__
 
 <pre>
 SELECT col1 as subquery_col1
@@ -202,18 +167,26 @@ SELECT col1 as subquery_col1
 #DbiDo
 ---+++ DBI_DO
 
-First of all it shall be stated that =%<nop>DBI_DO%= could implement all required functionality. In other words, one could say that =%<nop>DBI_QUERY%= becomes obsolete. This is obvious from [[#DbiDoSyntax][the syntax description]]. But it also implies that =%<nop>DBI_DO%= is:
+First of all it shall be stated that =%<nop>DBI_DO%= can implement all
+required functionality. In other words, one could say that
+=%<nop>DBI_QUERY%= becomes obsolete. This is obvious from
+[[#DbiDoSyntax][the syntax description]]. But it also implies that
+=%<nop>DBI_DO%= is:
 
    * a security risk (see [[#AccessControl][Access Control]]);
    * too complicated for most queries;
 
 Besides, =%<nop>DBI_QUERY%= hides quite a number of boring implementation details from a user.
 
-So, let's define =%<nop>DBI_DO%= as a last resort method when nothing else could do the job. The most typical use for it would be database editing.
+So, let's define =%<nop>DBI_DO%= as a last resort method when nothing else could do the job.
+Or, in other words, it is another way of creating a %WIKITOOLNAME% application.
 
 ---++++ Implementation
 
-As it was stated in [[#DbiDoSyntax][syntax section]], =%<nop>DBI_DO%= can fetch a script from another topics which would either represent the whole script or contain =%<nop>DBI_CODE%= declarations. In both cases the script is visible on the topic's page. For instance, the following declaration:
+As it was stated in [[#DbiDoSyntax][syntax section]], =%<nop>DBI_DO%= can
+fetch a script from another topics which would either represent the whole
+script or contain =%<nop>DBI_CODE%= declarations. In both cases the script
+is visible on the topic's page. For instance, the following declaration:
 
 <pre>
 %<nop>DBI_CODE{"test"}%
@@ -244,7 +217,7 @@ if ($varParams{test}) {
   </tr>
 </table>
 
-It would look much better with [[Foswiki:Extensions.SourceHighlightPlugin][SourceHighlightPlugin]]:
+One can make it looking a bit more pretty with a kind of source highlighting plugin<sup>[[#ShNote1][1]]</sup>:
 
 <pre>
 %<nop>DBI_CODE{"test"}%
@@ -266,7 +239,7 @@ if ($varParams{test}) {
   <tr valign="top">
     <td nowrap="nowrap"> <strong>Script code</strong> </td>
     <td> 
-<div class="codefragment">
+<div class="dbiq_codefragment">
 <pre><i><b><font color="#000080">if</font></b></i> <font color="#000000">(</font><font color="#993399">$varParams</font><font color="#000000">{</font>test<font color="#000000">}</font><font color="#000000">)</font> <font color="#000000">{</font>
      <font color="#993399">$rc</font> <font color="#000000">=</font> <font color="#0000ff">"This is test."</font><font color="#000000">;</font>
 <font color="#000000">}</font> <i><b><font color="#000080">else</font></b></i> <font color="#000000">{</font>
@@ -279,60 +252,49 @@ if ($varParams{test}) {
   </tr>
 </tbody></table>
 
-=%<nop>DBI_DO%= knows about existence of =%<nop>CODE%/%<nop>ENDCODE%= and attempts to strip these tags out just after the script has been fetched from a topic. After that Perl code becomes a part of an anonymous =sub=. Several variables are available to the code:
+#ShNote1
+<blockquote>
+<sup>1</sup> The sample has been generated using outdated !SourceHighlighPlugin. Other plugins may generate different output.
+</blockquote>
+
+=%<nop>DBI_DO%= knows about existence of =%<nop>CODE%/%<nop>ENDCODE%= and
+attempts to strip these tags out when the script is been fetched from a
+topic. After that Perl code becomes a part of an anonymous =sub=.  Several
+variables are available to the code:
 
 |*Variable*|*Description*|
 |=$dbh=|Database connection handle.|
-|=$cgiQuery=|A CGI object as returned by =Func::getCgiQuery()=.|
+|=$request=|A request object as returned by =%WIKITOOLNAME%::Func::getRequestObject()=. Mostly compatible with CGI module API.|
 |=$varParams=|Parameters specified in =%<nop>DBI_DO{...}%=. User can put any number of addition parameters there besides those described in [[#DbiDoSyntax][syntax section]].|
 |=$dbRecord=|Last fetched by =%<nop>DBI_QUERY%= database record or =%<nop>DBI_CALL%= parameters.|
 |=%httpParams=|HTTP parameters as returned by =CGI::param()= method. Note the =multivalued= parameter in the [[#DbiDoSyntax][syntax section]].|
 
 Since the =sub= is executed within plugin's module namespace all internal functions and variables are directly accessible. The most useful of them are described below.
 
-There is one special variable =$rc=. A value assigned to it is the value returned by =sub= and put into the output then. In this way one could display a error message or notification or form any kind of TML/HTML code.
+There is one special variable =$rc=. A value assigned to it is the value returned by =sub= and put into the output then. In this way one could display a error message or notification or form any kind of %WIKITOOLNAME%/HTML code.
 
-#AccessControl
----+++ Access Control
+---++++ Useful functions
 
-This plugin does nothing but a little with regard to access control and user rights. It has been considered more reasonable to delegate this functionality to database server. The only exception is =%<nop>DBI_DO%= which we will talk about later.
+DatabaseContrib API is available to a script. Additionally the following plugin functions could be handy within a script:
 
-Database server-side access control works through mapping users into DB server user accounts by means of =usermap= key in [[#PluginConfig][plugin configuration]]. This is done in the following way:
-
-   1. Plugin checks if the user is explicitly defined in =usermap=.
-   1. Then it checks if the user is a member of a group defined in =usermap=.
-   1. If none of the above is fulfilled then =user= and =password= keys of plugin configuration are used. If there is no =user= key then plugin refuses connection.
-   1. Plugin attempts to connect.
-
-Additional control implemented for =%<nop>DBI_DO%=. Another configuration key named =allow_do= introduced which maps individual topic into list of users or groups with permission to use the feature. Special subkey =default= of this key defines default mapping. There is no default value for this subkey.
-
-%T% *WARNING!* Using subkey =default= of =allow_do= key must be considered as a serious security whole and better be avoided.
-
-In the following example:
-
-<pre>
-{
-    some_db => {
-        ...
-        allow_do => {
-            'Sandbox.SomeUserSandbox' => [qw(SomeUser AdminGroup)],
-            'Main.SomeTopic' => [qw(SpecialGroup)],
-        }
-    }
-};
-</pre>
-
-A user _SomeUser_ will be allowed to use =%<nop>DBI_DO%= within _SomeUserSandbox_ topic of _Sandbox_ web and within _SomeTopic_ of _Main_ web if he is a member of _SpecialGroup_.
-
-%X% *Note:* The access control scheme is very much raw at the moment and may be subject to change in future plugin version. Yet, comments are welcome!
+   $ =subQuery($subquery, $dbRecord) -&gt; $text=: Implements =%<nop>DBI_SUBQUERY%= and =%<nop>DBI_CALL%=. =$subquery= is the name of subquery to be called. =$dbRecord= has the same meaning as corresponding =sub= parameter. Returns output of the subquery.
+   $ =expandColumns($text, $dbRecord) -&gt; $text=: Expands variables within =$text= as described in [[#VariableExpansion][DBIQueryPlugin Expansion]] and returns the result.
+   $ =protectValue($text) -&gt; $text=: Returns =$text= modified in a way that prevents it from %WIKITOOLNAME% processing.
+   $ =wikiErrMsg(@msg) -&gt; $errorMessage=: Formats error messages.
 
 #PluginConfig
----+++ Configuration
+---+++ Database connection configuration
 
-Most of plugin configuration is done with =configure=. The setting {Plugins}{DBIQueryPlugin}{dbi_connections} defines a configuration hash. Typically, it would look like the following code:
+This plugin relies on the DatabaseContrib to provide
+the connection to a DBI database. Please see the contrib for documentation
+of how to specify the database connection.
 
+Below is an example of the configuration of two database connections,
+=connection1= and =test=, to be inserted into the =DatabaseContrib= section
+of the =configure= script.
+
+<blockquote style="background-color:#f5f5f5">
 <pre>
-{
     connection1 => {
         usermap => {
             AdminGroup => {
@@ -366,47 +328,59 @@ Most of plugin configuration is done with =configure=. The setting {Plugins}{DBI
             default => [qw(AdminGroup)],
             'Sandbox.SomeUserSandbox' => [qw(AdminGroup SpecialGroup)],
         },
+        allow_query => {
+            'Sandbox.SomeQueryTopic' => [qw(WikiGuest)],
+        },
         #user => 'nobody',
         #password => 'never',
         driver => 'mysql',
         database => 'test',
         # host => 'localhost',
     }
-}
 </pre>
+</blockquote>
 
-First-level keys of the hash are connection names used by =%<nop>DBI_QUERY%=, =%<nop>DBI_DO%= (=db_identifier= parameter). Each connection has it's own set of parameters defined by second-level keys. These are:
+#AccessControl
+---+++ Access Control
 
-|*Key*|*Description*|*Default*|*Required*|
-|user|Default database account name.|_none_|optional|
-|password|Default database account password.|_none_|optional|
-|database|Database name on the server.|_none_|required|
-|driver|DBI driver used to access the server.|_none_|required|
-|dsn|Complete dsn string to be used when creating connection. See your DBD driver documentation.%BR%%BR%%T% *Note:* With this key defined both =database= and =driver= keys are ignored.|_none_|optional|
-|init|Initialization command to be sent to the database server just after the connection initiated.|_none_|optional|
-|host|DB server hostname.|localhost|optional|
-|codepage|Client-side codepage of this connection.<sup>[[#CodePageNote][*]]</sup>|_none_|optional|
-|usermap|Maps particular users or groups into database accounts. See [[#AccessControl][Access Control]] section.|_none_|optional|
-|allow_do|Specifies users or groups allowed to use =%<nop>DBI_DO%= in particular topics. See [[#AccessControl][Access Control]] section.|default => [qw(!AdminGroup)]|optional|
+This plugin relies on the DatabaseContrib [[DatabaseContrib#AccessControl][access control] API. For middle-level access
+control DBIQueryPlugin uses two keys to check for two levels of access:
 
-#CodePageNote
-<sup>*</sup> Only !MySQL support provided for this feature. Support for other servers is not implemented yet.
+|*Key name*|*Variable*|*Inherits from*|*Description*|
+|allow_do|[[#DbiDoSyntax][=DBI_DO=]|<nop>|Access granted to possibly destructive actions|
+|allow_query|[[#DbiQuerySyntax][=DBI_QUERY=]],[[#DbiCallSyntax][=DBI_CALL=]]|=allow_do=|Access granted for querying only|
 
----++ Drawback and problems.
+---++ Drawback and problems
 
-Working with a database isn't a simple task, in common. With this plugin I was trying to make it both as simple as possible and flexible same time. Balancing between these two extremes led to some compromises and side effects.
+Working with a database isn't a simple task, in common. With this plugin I
+was trying to make it both as simple as possible and flexible same time.
+Balancing between these two extremes led to some compromises and side
+effects.
 
-The biggest compromise was usage of Perl inlines for =%<nop>DBI_DO%=. The first approach was to make it working much like =%<nop>DBI_QUERY%=, using sections of declarations. But the more quiestions like:
+The biggest compromise was usage of Perl inlines for =%<nop>DBI_DO%=. The
+first approach was to make it working much like =%<nop>DBI_QUERY%=, using
+sections of declarations. But the more quiestions like:
 
    * how to check data consistency?
    * how to validate data?
    * how to generate error messages?
 
-and several others of the kind was arising, the more final structure was looking like a new language. So, why developing a new one if Perl is here? But then again, as it was mentioned before, this way is not secure-enough and an administrator must take serious considerations before allowing usage of =%<nop>DBI_DO%= to a user.
+and several others of the kind was arising, the more final structure was
+looking like a new language. So, why developing a new one when Perl is out
+there?  But then again, as it was mentioned before, this way is not
+secure-enough and an administrator must take serious considerations before
+allowing usage of =%<nop>DBI_DO%= to a user.
 
-The other issue is about plugin execution order. As one can see from !MessageBoard example, attached to this topic, usage of other plugins could significally improve control over !DBIQueryPlugin output. However, it is not guaranteed that another plugin would not be called in first place causing unpredictable results like unwanted changes in a Perl script.
+The other issue is about plugin execution order. As one can see from
+!MessageBoard example, attached to this topic, usage of other plugins could
+significally improve control over !DBIQueryPlugin output. However, it is
+not guaranteed that another plugin would not be called in first place
+causing unpredictable results like unwanted changes in a Perl script.
 
-Considering this issue the decision was made that !DBIQueryPlugin must act as a preprocessor. For those who understand, it does all the job in =beforeCommonTagsHandler()= routine. This approach has three major drawbacks:
+Considering this issue the decision was made that !DBIQueryPlugin must act
+as a preprocessor. For those familiar with %WIKITOOLNAME% guts, it does all
+the job in =beforeCommonTagsHandler()= routine. This approach has three
+major drawbacks:
 
    * First of all, it doesn't really follow the guidelines.
    * It breaks common logic of page analysis. Consider the following example:
@@ -420,32 +394,44 @@ Considering this issue the decision was made that !DBIQueryPlugin must act as a 
          %DBI_QUERY%
          </pre>
 
-      One will not get what would be expected because at the time =%<nop>CALC{"$GET(var)"}%= is executed =%<nop>CALC{"$SET(var,1)"}%= has not been called yet! The only way to have it be done properly is to put the latter just under =%<nop>DBI_QUERY{...}%= line.
+     One will not get what would be expected because at the time =%<nop>CALC{"$GET(var)"}%= is executed =%<nop>CALC{"$SET(var,1)"}%= has not been called yet! The only way to have it be done properly is to put the latter just next to =%<nop>DBI_QUERY{...}%= line.
 
    * =%<nop>INCLUDE{}%= would not work because =beforeCommonTagsHandler()= is not called for included topics.
 
-The last issue was the reason to implement classic plugin handling when it is requested during the inclusion procedure. Possible side effects of this hack are not studied yet and may create some headache.
+The last issue was the cause to implement classic plugin handling when it
+is requested during the inclusion procedure. Possible side effects of this
+hack are not studied yet and may cause some headache.
 
+---++ Plugin Settings
 
-#PluginInstallation
----++ Plugin Installation Instructions
+Databases available to end user have to be preconfigured with
+[[DatabaseContrib#DatabaseConfig][DatabaseConfig database configuration]]
+using %WIKITOOLNAME% configure script.
 
+Additionally the following coniguration keys of ={Plugins}{DBIQueryPlugin}= configuration section are available:
+
+|*Configuration Key*  |  *Default value*|*Description*|
+|*Debug*  |  =false=|Generate additional debug output|
+|*maxRecursionLevel*  |  100|How many nested subquery calls of a same query are allowed before it's considered a too deep recursion|
+
+<!--
+   * One line description
+      * Set SHORTDESCRIPTION = Make complex database queries using DBI Perl module
+-->
+
+---++ Installation
 %$INSTALL_INSTRUCTIONS%
 
 ---++ Info
 
-|  Author: | Vadim Belman |
-|  Version: | %$VERSION% |
-|  Release: | %$RELEASE% |
-|  Change History: | <!-- versions below in reverse order -->&nbsp; |
-|  1.3 - 22 Jul 2010 | Foswiki port |
-|  1.2 - 3 Jun 2006 | Added 'dsn' and 'init' parameters of configuration file.\
- Character set support for PostgreSQL.\
- No default value for 'allow_do' parameter of configuration file.\
- Support for column names with spaces. |
-|  1.1 - 17 Oct 2005: |  |
-|  13 Oct 2005: | Initial version |
-|  License: | GPL ([[http://www.gnu.org/copyleft/gpl.html][GNU General Public License]]) |
-|  Home: | http://Foswiki.org/Extensions/%TOPIC% |
-|  Support: | http://Foswiki.org/Support/%TOPIC% |
+Dependencies: %$DEPENDENCIES%
 
+%META:FORM{name="PackageForm"}%
+%META:FIELD{name="Author" title="Author" value="VadimBelman"}%
+%META:FIELD{name="Version" title="Version" value="%25$VERSION%25"}%
+%META:FIELD{name="Release" title="Release" value="%25$RELEASE%25"}%
+%META:FIELD{name="Repository" title="Repository" value="https://github.com/foswiki/distro"}%
+%META:FIELD{name="Copyright" title="Copyright" value="%25$CREATEDYEAR%25, VadimBelman, All Rights Reserved"}%
+%META:FIELD{name="License" title="License" value="GPL ([[http://www.gnu.org/copyleft/gpl.html][GNU General Public License]])"}%
+%META:FIELD{name="Home" title="Home" value="http://foswiki.org/Extensions/%25$ROOTMODULE%25"}%
+%META:FIELD{name="Support" title="Support" value="http://foswiki.org/Support/%25$ROOTMODULE%25"}%

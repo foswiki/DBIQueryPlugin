@@ -1,47 +1,22 @@
-#---+ Extensions
-#---++ DBIQueryPlugin
-# **PERL**
-# See the plugin documentation
-$Foswiki::cfg{Plugins}{DBIQueryPlugin}{dbi_connections} = {
-    connection1 => {
-        usermap => {
-            AdminGroup => {
-                user => 'dbuser1',
-                password => 'dbpassword1',
-            },
-            SpecialGroup => {
-                user => 'specialdb',
-                password => 'specialpass',
-            },
-        },
-        user => 'guest',
-        password => 'guestpass',
-        driver => 'mysql',
-        database => 'some_db',
-        codepage => 'koi8r',
-        host => 'your.server.name',
-    },
-    test => {
-        usermap => {
-            AdminGroup => {
-                user => 'dbuser2',
-                password => 'dbpassword2',
-            },
-            SomeUser => {
-                user => 'someuser',
-                password => 'somepassword',
-            },
-        },
-        allow_do => {
-            default => [qw(AdminGroup)],
-            'Sandbox.SomeUserSandbox' => [qw(AdminGroup SpecialGroup)],
-        },
-        #user => 'nobody',
-        #password => 'never',
-        driver => 'mysql',
-        database => 'test',
-        # host => 'localhost',
-    }
-};
+# ---+ Extensions
+# ---++ DBIQueryPlugin
+#
+# **BOOLEAN LABEL="Debug"**
+# Debugging flag for the plugin.
+$Foswiki::cfg{Plugins}{DBIQueryPlugin}{Debug} = 0;
 
+# **NUMBER LABEL="Maximum number of recursive calls"**
+# Defines how many recursions could be performed on a query before it's considered endless or too deep.
+$Foswiki::cfg{Plugins}{DBIQueryPlugin}{maxRecursionLevel} = 100;
 
+# **STRING EXPERT LABEL="Protect open bracket"**
+# DON'T CHANGLE unless 101% sure that this is exactly what you need!
+# Kind of a braces used to mark areas of HTML code being protected from unneeded processing.
+$Foswiki::cfg{Plugins}{DBIQueryPlugin}{protectStart} = '!&lt;ProtectStart&gt;';
+
+# **STRING EXPERT LABEL="Protect close bracket"**
+# DON'T CHANGLE unless 101% sure that this is exactly what you need!
+# Kind of a braces used to mark areas of HTML code being protected from unneeded processing.
+$Foswiki::cfg{Plugins}{DBIQueryPlugin}{protectEnd} = '!&lt;ProtectEnd&gt';
+1;
+# vim: ft=perl et ts=4
