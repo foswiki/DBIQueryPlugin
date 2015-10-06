@@ -29,7 +29,7 @@ use Foswiki::Contrib::DatabaseContrib qw(:all);
 #   v1.2.1_001 -> v1.2.2 -> v1.2.2_001 -> v1.2.3
 #   1.21_001 -> 1.22 -> 1.22_001 -> 1.23
 #
-our $VERSION = '1.05';
+our $VERSION = '1.05.01_001';
 
 # $RELEASE is used in the "Find More Extensions" automation in configure.
 # It is a manually maintained string used to identify functionality steps.
@@ -44,7 +44,7 @@ our $VERSION = '1.05';
 # It is preferred to keep this compatible with $VERSION. At some future
 # date, Foswiki will deprecate RELEASE and use the VERSION string.
 #
-our $RELEASE = '15 Sep 2015';
+our $RELEASE = '06 Oct 2015';
 
 # One line description of the module
 our $SHORTDESCRIPTION =
@@ -647,6 +647,15 @@ sub initPlugin {
         return 0;
     }
 
+    Foswiki::Meta::registerMETA(
+        'DBI_QUERY_PLUGIN',
+        many    => 1,
+        require => [qw( code name macro )],
+        allowed => [qw( params )],
+    );
+
+    Foswiki::Func::registerTagHandler( 'DBI_TEST', \&_DBI_TEST );
+
     db_init || return 0;
 
     # Example code of how to get a preference value, register a macro
@@ -710,6 +719,21 @@ sub initPlugin {
 #    # $params->{_DEFAULT} will be 'hamburger'
 #    # $params->{sideorder} will be 'onions'
 #}
+
+sub _DBI_TEST {
+    my ( $session, $params, $topic, $web, $topicObject ) = @_;
+
+    my $rc = "";
+
+    my $attrs = $topicObject->get( 'DBI_QUERY_PLUGIN', $params->{_DEFAULT} );
+
+    throw Error::Simple("No stored DBI_TEST with id=$params->{_DEFAULT}")
+      unless defined $attrs;
+
+    $rc .= "*DBI_TEST:* <pre>$attrs->{code}</pre>";
+
+    return $rc;
+}
 
 =begin TML
 
@@ -1050,16 +1074,42 @@ in the edit box. It is called once when the =edit= script is run.
 
 *Since:* Foswiki::Plugins::VERSION = '2.0'
 
+%DBI_TEST{'conn' p1=1 p2=2}%
+some
+code
+%DBI_TEST%
+
 =cut
 
-#sub beforeEditHandler {
-#    my ( $text, $topic, $web ) = @_;
-#
-#    # You can work on $text in place by using the special perl
-#    # variable $_[0]. These allow you to operate on $text
-#    # as if it was passed by reference; for example:
-#    # $_[0] =~ s/SpecialString/my alternative/ge;
-#}
+sub fetchMetaQuery {
+    my ( $meta, $id ) = @_;
+
+    unless ( defined $id ) {
+        return "%DBI_TEST{}% *id is missing*";
+    }
+
+    my $attrs = $meta->get( 'DBI_QUERY_PLUGIN', $id );
+
+    unless ($attrs) {
+        return "%DBI_TEST{$id}% *no stored attributes for id=$id*";
+    }
+
+    return "%DBI_TEST{$attrs->{params}}%$attrs->{code}%DBI_TEST%";
+}
+
+sub beforeEditHandler {
+    my ( $text, $topic, $web ) = @_;
+
+    my $meta =
+      Foswiki::Meta->load( $Foswiki::Plugins::SESSION, $web, $topic, $text );
+
+    $_[0] =~ s/%DBI_TEST{(.*?)}%/&fetchMetaQuery($meta, $1)/ges;
+
+    # You can work on $text in place by using the special perl
+    # variable $_[0]. These allow you to operate on $text
+    # as if it was passed by reference; for example:
+    # $_[0] =~ s/SpecialString/my alternative/ge;
+}
 
 =begin TML
 
@@ -1080,14 +1130,40 @@ handler. Use the =$meta= object.
 
 =cut
 
-#sub afterEditHandler {
-#    my ( $text, $topic, $web ) = @_;
-#
-#    # You can work on $text in place by using the special perl
-#    # variable $_[0]. These allow you to operate on $text
-#    # as if it was passed by reference; for example:
-#    # $_[0] =~ s/SpecialString/my alternative/ge;
-#}
+sub storeMetaQuery {
+    my ( $metas, $params, $code ) = @_;
+    my %params = Foswiki::Func::extractParameters($params);
+    my $id = $params{id} // newQID;
+    push @$metas,
+      { macro => 'DBI_TEST', params => $params, code => $code, name => $id };
+    return "%DBI_TEST{$id}%";
+}
+
+sub afterEditHandler {
+    my ( $text, $topic, $web, $meta ) = @_;
+
+    # You can work on $text in place by using the special perl
+    # variable $_[0]. These allow you to operate on $text
+    # as if it was passed by reference; for example:
+    # $_[0] =~ s/SpecialString/my alternative/ge;
+
+    unless ( defined $meta ) {
+        $meta = Foswiki::Meta->load( $Foswiki::Plugins::SESSION, $web, $topic,
+            $text );
+    }
+
+    my @dbi_meta;
+
+    $_[0] =~
+      s/%DBI_TEST{(.*?)}%(.*?)%DBI_TEST%/&storeMetaQuery(\@dbi_meta, $1,$2)/ges;
+
+    $meta->putAll( 'DBI_QUERY_PLUGIN', @dbi_meta );
+
+    #foreach (@dbi_meta) {
+    #    dprint "Storing META: ", $_->{name};
+    #    $meta->putKeyed( 'DBI_QUERY_PLUGIN', $_ );
+    #}
+}
 
 =begin TML
 
