@@ -64,7 +64,7 @@ our $SHORTDESCRIPTION =
 our $NO_PREFS_IN_TOPIC = 1;
 
 # =$dbc= - DatabaseContrib object.
-my ( $topic, $web, %queries, %subquery_map, $dbc );
+my ( $topic, $web, $basetopic, $baseweb, %queries, %subquery_map, $dbc );
 
 sub message_prefix {
     my @call = caller(2);
@@ -385,7 +385,7 @@ sub getQueryResult {
 
     return wikiErrMsg("No access to query $conname DB at $web.$topic.")
       unless defined( $query->{call} )
-      || $dbc->access_allowed( $conname, "$web.$topic", 'allow_query' );
+      || $dbc->access_allowed( $conname, "$baseweb.$basetopic", 'allow_query' );
 
     if ( $query->{_nesting} >
         $Foswiki::cfg{Plugins}{DBIQueryPlugin}{maxRecursionLevel} )
@@ -484,7 +484,8 @@ sub doQuery {
     dprint "doQuery()\n";
 
     return wikiErrMsg("No access to modify $conname DB at $web.$topic.")
-      unless $dbc->access_allowed( $conname, "$web.$topic", 'allow_do' );
+      unless $dbc->access_allowed( $conname, "$baseweb.$basetopic",
+        'allow_do' );
 
     my %multivalued;
     if ( defined $params->{multivalued} ) {
@@ -576,6 +577,9 @@ sub handleQueries {
 sub processPage {
     state $level = 0;
 
+    $baseweb   = Foswiki::Func::getPreferencesValue('BASEWEB');
+    $basetopic = Foswiki::Func::getPreferencesValue('BASETOPIC');
+
     $level++;
     dprint "### $level\n\n";
 
@@ -595,7 +599,7 @@ sub processPage {
         $doHandle = 1;
     }
     if ($doHandle) {
-        handleQueries;
+        handleQueries(@_);
         $_[0] =~ s/%(DBI_CONTENT\d+)%/$queries{$1}{result}/ges;
     }
 
@@ -860,9 +864,20 @@ Foswiki:Development.AddToZoneFromPluginHandlers if you are calling
 sub commonTagsHandler {
     ( undef, $topic, $web ) = @_;
 
-    dprint("CommonTagsHandler( $_[2].$_[1] )");
+    dprint(
+        "CommonTagsHandler( $_[2].$_[1] )",
+        (
+            $_[3]
+            ? ": included from "
+              . Foswiki::Func::getPreferencesValue('BASEWEB') . "."
+              . Foswiki::Func::getPreferencesValue('BASETOPIC')
+            : ""
+        )
+    );
     if ( $_[3] ) {    # We're being included
-        processPage(@_);
+            # We do not pass $included attribute to processPage. So far it's
+            # not required for processing.
+        processPage( @_[ 0 .. 2, 4 ] );
     }
 }
 
