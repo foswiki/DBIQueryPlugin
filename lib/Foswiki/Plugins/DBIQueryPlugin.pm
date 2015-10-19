@@ -13,7 +13,7 @@ use DBI;
 use Error qw(:try);
 use CGI qw(:html2);
 use Carp qw(longmess);
-use Foswiki::Contrib::DatabaseContrib qw(:all);
+use Foswiki::Contrib::DatabaseContrib;
 
 # $VERSION is referred to by Foswiki, and is the only global variable that
 # *must* exist in this package. For best compatibility, the simple quoted decimal
@@ -29,7 +29,7 @@ use Foswiki::Contrib::DatabaseContrib qw(:all);
 #   v1.2.1_001 -> v1.2.2 -> v1.2.2_001 -> v1.2.3
 #   1.21_001 -> 1.22 -> 1.22_001 -> 1.23
 #
-our $VERSION = '1.05.01_001';
+use version; our $VERSION = version->parse('1.06_002');
 
 # $RELEASE is used in the "Find More Extensions" automation in configure.
 # It is a manually maintained string used to identify functionality steps.
@@ -44,7 +44,7 @@ our $VERSION = '1.05.01_001';
 # It is preferred to keep this compatible with $VERSION. At some future
 # date, Foswiki will deprecate RELEASE and use the VERSION string.
 #
-our $RELEASE = '06 Oct 2015';
+our $RELEASE = '1.06_002';
 
 # One line description of the module
 our $SHORTDESCRIPTION =
@@ -63,7 +63,8 @@ our $SHORTDESCRIPTION =
 # entries so they can be used with =configure=.
 our $NO_PREFS_IN_TOPIC = 1;
 
-my ( $topic, $web, $user, $installWeb, %queries, %subquery_map );
+# =$dbc= - DatabaseContrib object.
+my ( $topic, $web, $basetopic, $baseweb, %queries, %subquery_map, $dbc );
 
 sub message_prefix {
     my @call = caller(2);
@@ -89,9 +90,9 @@ sub dprint(@) {
 
 sub wikiErrMsg {
     return
-        "<strong>\%RED\%ERROR:\n<pre>"
+        "<strong>\%RED\%ERROR:\n<verbatim>"
       . join( "", @_ )
-      . "\n</pre>\%ENDCOLOR\%</strong>";
+      . "\n</verbatim>\%ENDCOLOR\%</strong>";
 }
 
 =begin TML
@@ -262,9 +263,6 @@ sub storeQuery {
 
     %params = query_params($param_str);
 
-    #return wikiErrMsg("This DBI connection is not defined: $conname.")
-    #  unless db_connected($conname);
-
     my $qid = newQID;
 
     $queries{$qid}{params}     = \%params;
@@ -387,7 +385,7 @@ sub getQueryResult {
 
     return wikiErrMsg("No access to query $conname DB at $web.$topic.")
       unless defined( $query->{call} )
-      || db_access_allowed( $conname, "$web.$topic", 'allow_query' );
+      || $dbc->access_allowed( $conname, "$baseweb.$basetopic", 'allow_query' );
 
     if ( $query->{_nesting} >
         $Foswiki::cfg{Plugins}{DBIQueryPlugin}{maxRecursionLevel} )
@@ -412,7 +410,7 @@ sub getQueryResult {
           ( $query->{subquery} || "UNDEFINED" ), "....\n";
         $columns->{".nesting."} = $query->{_nesting};
 
-        my $dbh = $query->{dbh} = db_connect( $params->{_DEFAULT} );
+        my $dbh = $query->{dbh} = $dbc->connect( $params->{_DEFAULT} );
         throw Error::Simple(
             "DBI connect error for connection " . $params->{_DEFAULT} )
           unless $dbh;
@@ -486,7 +484,8 @@ sub doQuery {
     dprint "doQuery()\n";
 
     return wikiErrMsg("No access to modify $conname DB at $web.$topic.")
-      unless db_access_allowed( $conname, "$web.$topic", 'allow_do' );
+      unless $dbc->access_allowed( $conname, "$baseweb.$basetopic",
+        'allow_do' );
 
     my %multivalued;
     if ( defined $params->{multivalued} ) {
@@ -494,16 +493,17 @@ sub doQuery {
     }
 
     # Preparing sub() code.
-    my $dbh = $query->{dbh} = db_connect($conname);
+    $query->{dbh} = $dbc->connect($conname);
     throw Error::Simple( "DBI connect error for connection " . $conname )
-      unless $dbh;
+      unless $query->{dbh};
     my $request = Foswiki::Func::getRequestObject();
     dprint( "REQUEST ACTIONS: ", $request->action, " thru ", $request->method );
     dprint( "REQUEST PARAMETERS: {", join( "}{", $request->param ), "}\n" );
     dprint("REQUEST TOPC: $web.$topic\n");
     my $sub_code = <<EOC;
 sub {
-        my (\$dbh, \$request, \$varParams, \$dbRecord) = \@_;
+        my (\$dbc, \$request, \$varParams, \$dbRecord) = \@_;
+        my \$dbh = \$dbc->dbh('$conname');
         my \@cgiParams = \$request->param;
         my \%httpParams;
         foreach my \$cgiParam (\@cgiParams) {
@@ -518,9 +518,9 @@ sub {
 #line 1,"$query->{script_name}"
             $query->{code}
         } catch Error::Simple with {
-            \$rc .= wikiErrMsg(shift->{-text});
+            \$rc .= wikiErrMsg("Error::Simple -- ", shift->{-text});
         } otherwise {
-            throw @_;
+            \$rc .= wikiErrMsg("OTHERWISE -- ", $@);
         };
 
         return \$rc;
@@ -529,7 +529,7 @@ EOC
 
     my $sub = eval $sub_code;
     return wikiErrMsg($@) if $@;
-    $rc = $sub->( $dbh, $request, $params, $columns );
+    $rc = $sub->( $dbc, $request, $params, $columns );
 
     return $rc;
 }
@@ -547,12 +547,10 @@ sub handleQueries {
             warning $err->{-text};
             my $query_text = "";
             if ( defined $query->{expanded_statement} ) {
-                $query_text = "<br><pre>$query->{expanded_statement}</pre>";
+                $query_text = "\n\n$query->{expanded_statement}";
             }
             if ( $Foswiki::cfg{Plugins}{DBIQueryPlugin}{Debug} ) {
-                $query->{result} =
-                  wikiErrMsg( "<pre>", $err->stacktrace, "</pre>",
-                    $query_text );
+                $query->{result} = wikiErrMsg( $err->stacktrace, $query_text );
             }
             else {
                 $query->{result} = wikiErrMsg("$err->{-text}$query_text");
@@ -579,6 +577,9 @@ sub handleQueries {
 sub processPage {
     state $level = 0;
 
+    $baseweb   = Foswiki::Func::getPreferencesValue('BASEWEB');
+    $basetopic = Foswiki::Func::getPreferencesValue('BASETOPIC');
+
     $level++;
     dprint "### $level\n\n";
 
@@ -598,7 +599,7 @@ sub processPage {
         $doHandle = 1;
     }
     if ($doHandle) {
-        handleQueries;
+        handleQueries(@_);
         $_[0] =~ s/%(DBI_CONTENT\d+)%/$queries{$1}{result}/ges;
     }
 
@@ -606,7 +607,7 @@ sub processPage {
 
     $level--;
 
-    db_disconnect if $level < 1;
+    $dbc->disconnect if $level < 1;
 }
 
 =begin TML
@@ -636,7 +637,7 @@ FOOBARSOMETHING. This avoids namespace issues.
 =cut
 
 sub initPlugin {
-    ( $topic, $web, $user, $installWeb ) = @_;
+    ( $topic, $web ) = @_;
 
     dprint "DBIQueryPlugin::initPlugin(", join( ",", @_ ), ")";
 
@@ -656,7 +657,10 @@ sub initPlugin {
 
     Foswiki::Func::registerTagHandler( 'DBI_TEST', \&_DBI_TEST );
 
-    db_init || return 0;
+    $dbc =
+      Foswiki::Contrib::DatabaseContrib->new(
+        acl_inheritance => { allow_query => 'allow_do', }, )
+      || return 0;
 
     # Example code of how to get a preference value, register a macro
     # handler and register a RESTHandler (remove code you do not need)
@@ -884,9 +888,20 @@ Foswiki:Development.AddToZoneFromPluginHandlers if you are calling
 sub commonTagsHandler {
     ( undef, $topic, $web ) = @_;
 
-    dprint("CommonTagsHandler( $_[2].$_[1] )");
+    dprint(
+        "CommonTagsHandler( $_[2].$_[1] )",
+        (
+            $_[3]
+            ? ": included from "
+              . Foswiki::Func::getPreferencesValue('BASEWEB') . "."
+              . Foswiki::Func::getPreferencesValue('BASETOPIC')
+            : ""
+        )
+    );
     if ( $_[3] ) {    # We're being included
-        processPage(@_);
+            # We do not pass $included attribute to processPage. So far it's
+            # not required for processing.
+        processPage( @_[ 0 .. 2, 4 ] );
     }
 }
 
