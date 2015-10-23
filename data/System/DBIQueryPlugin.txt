@@ -1,6 +1,6 @@
 %META:TOPICINFO{author="VadimBelman" comment="" date="1443825457" format="1.1" reprev="2" version="2"}%
 %META:TOPICPARENT{name="Plugins"}%
----+!! Empty Plugin
+---+!! DBIQueryPlugin
 
 %SHORTDESCRIPTION%
 
@@ -8,7 +8,7 @@
 
 ---++ Overview
 
-This plugin is intended to provide Foswiki with ability to make complex database requests using DBI Perl module.
+This plugin is intended to provide %WIKITOOLNAME% with ability to make complex database requests using DBI Perl module.
 
 %X% Any help with this documentation is very much welcome as it's really pretty far from being ideal. Thanks a lot!
 
@@ -67,10 +67,10 @@ possible?
 With this view in mind we come to the following procedure:
 
    1. Every query definition within topic is parsed and stored for further processing. This is done in two major steps:
-      1. Query statement is exctracted from the definition.
+      1. Query statement is extracted from the definition.
       1. Every newline within =.header=, =.body=, and =.footer= gets changed with space except for the last ones. They're removed. Whereas newline is needed =\n= escape sequence must be used. Consequently, =\\n= is translated into =\n=.
    1. All queries are processed except for those declared as subqueries:
-      1. =.header= filter is expanded with [[#VariableExpansion][variable expansion]] mechanizm and put into the output.
+      1. =.header= filter is expanded with [[#VariableExpansion][variable expansion]] mechanism and put into the output.
       1. The query statement is expanded using !DBIQueryPlugin and %WIKITOOLNAME% variable expansion mechanisms in the order they are mentioned here.
       1. Database is queried and data is fetched row-by-row. Each row data get [[#ValueQuoting][quoted]] and then used for setting !DBIQueryPlugin variables. =.body= filter is expanded using these values.
       1. =.footer= filter is expanded with !DBIQueryPlugin mechanism and put into the output.
@@ -100,7 +100,7 @@ would provide us with variables =%name%=, =%personalid%=, =%someotherinfo%=.
 
 There are some special cases like !MySQL's =SHOW CREATE PROCEDURE= where
 column names may contain spaces within them. These spaces are changed with
-undersocre sign making it possible to refer to them as to database columns.
+underscore sign making it possible to refer to them as to database columns.
 I.e. 'Create Procedure' field may be referred as =%<nop>create_procedure%=.
 
 The second step is [[#ProcSubqueries][subquery processing]].
@@ -359,13 +359,13 @@ effects.
 
 The biggest compromise was usage of Perl inlines for =%<nop>DBI_DO%=. The
 first approach was to make it working much like =%<nop>DBI_QUERY%=, using
-sections of declarations. But the more quiestions like:
+sections of declarations. But the more questions like:
 
    * how to check data consistency?
    * how to validate data?
    * how to generate error messages?
 
-and several others of the kind was arising, the more final structure was
+And several others of the kind was arising, the more final structure was
 looking like a new language. So, why developing a new one when Perl is out
 there?  But then again, as it was mentioned before, this way is not
 secure-enough and an administrator must take serious considerations before
@@ -373,7 +373,7 @@ allowing usage of =%<nop>DBI_DO%= to a user.
 
 The other issue is about plugin execution order. As one can see from
 !MessageBoard example, attached to this topic, usage of other plugins could
-significally improve control over !DBIQueryPlugin output. However, it is
+significantly improve control over !DBIQueryPlugin output. However, it is
 not guaranteed that another plugin would not be called in first place
 causing unpredictable results like unwanted changes in a Perl script.
 
@@ -408,7 +408,7 @@ Databases available to end user have to be preconfigured with
 [[DatabaseContrib#DatabaseConfig][DatabaseConfig database configuration]]
 using %WIKITOOLNAME% configure script.
 
-Additionally the following coniguration keys of ={Plugins}{DBIQueryPlugin}= configuration section are available:
+Additionally the following configuration keys of ={Plugins}{DBIQueryPlugin}= configuration section are available:
 
 |*Configuration Key*  |  *Default value*|*Description*|
 |*Debug*  |  =false=|Generate additional debug output|
