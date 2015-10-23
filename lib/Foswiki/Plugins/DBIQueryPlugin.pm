@@ -29,7 +29,7 @@ use Foswiki::Contrib::DatabaseContrib;
 #   v1.2.1_001 -> v1.2.2 -> v1.2.2_001 -> v1.2.3
 #   1.21_001 -> 1.22 -> 1.22_001 -> 1.23
 #
-use version; our $VERSION = version->declare('1.06');
+use version; our $VERSION = version->declare('1.06.1');
 
 # $RELEASE is used in the "Find More Extensions" automation in configure.
 # It is a manually maintained string used to identify functionality steps.
@@ -44,7 +44,7 @@ use version; our $VERSION = version->declare('1.06');
 # It is preferred to keep this compatible with $VERSION. At some future
 # date, Foswiki will deprecate RELEASE and use the VERSION string.
 #
-our $RELEASE = '1.06';
+our $RELEASE = '1.06.1';
 
 # One line description of the module
 our $SHORTDESCRIPTION =
@@ -483,7 +483,7 @@ sub doQuery {
 
     dprint "doQuery()\n";
 
-    return wikiErrMsg("No access to modify $conname DB at $web.$topic.")
+    return wikiErrMsg("No access to modify $conname DB at $baseweb.$basetopic.")
       unless $dbc->access_allowed( $conname, "$baseweb.$basetopic",
         'allow_do' );
 
@@ -499,7 +499,7 @@ sub doQuery {
     my $request = Foswiki::Func::getRequestObject();
     dprint( "REQUEST ACTIONS: ", $request->action, " thru ", $request->method );
     dprint( "REQUEST PARAMETERS: {", join( "}{", $request->param ), "}\n" );
-    dprint("REQUEST TOPC: $web.$topic\n");
+    dprint("REQUEST TOPC: $baseweb.$basetopic\n");
     my $sub_code = <<EOC;
 sub {
         my (\$dbc, \$request, \$varParams, \$dbRecord) = \@_;
@@ -508,7 +508,7 @@ sub {
         my \%httpParams;
         foreach my \$cgiParam (\@cgiParams) {
             dprint("QUERYING CGI parameter \$cgiParam");
-            my \@val = \$request->param(\$cgiParam);
+            my \@val = \$request->multi_param(\$cgiParam);
             \$httpParams{\$cgiParam} = (\$multivalued{\$cgiParam} || (\@val > 1)) ? \\\@val : \$val[0];
         }
         dprint( "doQuery code for $web.$topic\n" );
@@ -576,9 +576,6 @@ sub handleQueries {
 
 sub processPage {
     state $level = 0;
-
-    $baseweb   = Foswiki::Func::getPreferencesValue('BASEWEB');
-    $basetopic = Foswiki::Func::getPreferencesValue('BASETOPIC');
 
     $level++;
     dprint "### $level\n\n";
@@ -652,6 +649,9 @@ sub initPlugin {
       Foswiki::Contrib::DatabaseContrib->new(
         acl_inheritance => { allow_query => 'allow_do', }, )
       || return 0;
+
+    $baseweb = $web;
+    $basetopic = $topic;
 
     # Example code of how to get a preference value, register a macro
     # handler and register a RESTHandler (remove code you do not need)
