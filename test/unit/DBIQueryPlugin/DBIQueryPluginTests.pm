@@ -40,8 +40,10 @@ sub set_up {
 
     my $temp_dir = $this->{db_test_dir}->dirname;
 
-    $this->registerUser( 'DummyGuest', 'Dummy', 'Guest', 'nobody@some.domain.org' );
-    $this->registerUser( 'JohnSmith', 'Jogn', 'Smith', 'webmaster@some.domain.org' );
+    $this->registerUser( 'DummyGuest', 'Dummy', 'Guest',
+        'nobody@some.domain.org' );
+    $this->registerUser( 'JohnSmith', 'Jogn', 'Smith',
+        'webmaster@some.domain.org' );
 
     $this->assert(
         Foswiki::Func::addUserToGroup(
@@ -49,7 +51,8 @@ sub set_up {
         ),
         "Failed to make $this->{session}{user} a new admin"
     );
-    $this->assert( Foswiki::Func::addUserToGroup( 'DummyGuest', 'DummyGroup', 1 ),
+    $this->assert(
+        Foswiki::Func::addUserToGroup( 'DummyGuest', 'DummyGroup', 1 ),
         'Failed to add DummyGuest to DummyGroup' );
     $this->assert( Foswiki::Func::addUserToGroup( 'ScumBag', 'AdminGroup', 0 ),
         'Failed to make ScumBag a new admin' );
@@ -132,19 +135,18 @@ sub generate_test_methods {
     my $this = shift;
 
     my $inclusion_topic_name = "InclusionTestTopic";
-    my $do_test_text = "DBI_DO test ok!";
-    my $do_test_topic = 'Do' . $this->{test_web};
-    my $dbi_code_topic = 'ScriptTestTopic';
-    my $do_error_text = qq(<strong><span class='foswikiRedFG'>ERROR:
+    my $do_test_text         = "DBI_DO test ok!";
+    my $do_test_topic        = 'Do' . $this->{test_web};
+    my $dbi_code_topic       = 'ScriptTestTopic';
+    my $do_error_text        = qq(<strong><span class='foswikiRedFG'>ERROR:
 <pre>No access to modify mock&#95;connection DB at TemporaryDBIQueryPluginTestsTestWebDBIQueryPluginTests.$do_test_topic.
 </pre></span></strong>);
 
     $this->{_tests_data} = {
         version => {
+
             #default_topic => $this->{do_test_topic},
-            topics => {
-                default => '%DBI_VERSION%',
-            },
+            topics => { default => '%DBI_VERSION%', },
             result => "$Foswiki::Plugins::DBIQueryPlugin::VERSION",
         },
         query => {
@@ -278,52 +280,54 @@ SELECT f1, f2 FROM test_table
         },
         do => {
             default_topic => $do_test_topic,
-            topics => {
+            topics        => {
                 default => qq(\%DBI_DO{"mock_connection"}%
 \$rc = "$do_test_text";
 %DBI_DO%
 ),
             },
             users => {
-                ScumBag => $do_test_text,
+                ScumBag    => $do_test_text,
                 DummyGuest => $do_error_text,
-                JohnSmith => $do_error_text,
+                JohnSmith  => $do_error_text,
             },
         },
         include => {
             default_topic => $do_test_topic,
-            topics => {
-                default => qq(\%INCLUDE{"$this->{test_web}.$inclusion_topic_name"}%),
+            topics        => {
+                default =>
+                  qq(\%INCLUDE{"$this->{test_web}.$inclusion_topic_name"}%),
                 $inclusion_topic_name => qq(\%DBI_DO{"mock_connection"}%
 \$rc = "$do_test_text";
 %DBI_DO%
 ),
             },
             users => {
-                ScumBag => $do_test_text,
+                ScumBag    => $do_test_text,
                 DummyGuest => $do_error_text,
-                JohnSmith => $do_error_text,
+                JohnSmith  => $do_error_text,
             },
         },
         crosstopic_do => {
             default_topic => $do_test_topic,
-            topics => {
-                default => qq(\%DBI_DO{"mock_connection" topic="$this->{test_web}.$dbi_code_topic" script="test_script"}%),
+            topics        => {
+                default =>
+qq(\%DBI_DO{"mock_connection" topic="$this->{test_web}.$dbi_code_topic" script="test_script"}%),
                 $dbi_code_topic => qq(\%DBI_CODE{"test_script"}%
 \$rc = "$do_test_text";
 %DBI_CODE%
 ),
             },
             users => {
-                ScumBag => $do_test_text,
+                ScumBag    => $do_test_text,
                 DummyGuest => $do_error_text,
-                JohnSmith => $do_error_text,
+                JohnSmith  => $do_error_text,
             },
         },
     };
 
-    # Generate subs for tests 
-    foreach my $test (keys %{$this->{_tests_data}}) {
+    # Generate subs for tests
+    foreach my $test ( keys %{ $this->{_tests_data} } ) {
         my $test_sub = "sub test_$test { \$_[0]->run_test(\"$test\"); }; 1;";
         die "Cannot generate test `$test': $@" unless eval $test_sub;
     }
@@ -334,27 +338,23 @@ sub expand_source {
     return $tt->renderTML( $tt->expandMacros( $_[1] ) );
 }
 
-sub prepare_new_session
-{
+sub prepare_new_session {
     my $this = shift;
-    my ($user, $web, $topic) = @_;
+    my ( $user, $web, $topic ) = @_;
 
-    my ($request, $session);
-    $this->assert_not_null(
-        $request = Unit::Request->new(),
-        "Failed to create a new request"
-    );
+    my ( $request, $session );
+    $this->assert_not_null( $request = Unit::Request->new(),
+        "Failed to create a new request" );
     $request->path_info("/$web/$topic");
 
-    $this->assert_not_null(
-        $session = $this->createNewFoswikiSession( $user, $request ),
+    $this->assert_not_null( $session =
+          $this->createNewFoswikiSession( $user, $request ),
         "Failed to create a new session" );
 
     return $session;
 }
 
-sub run_test
-{
+sub run_test {
     my $this = shift;
     my ($test) = @_;
 
@@ -363,26 +363,35 @@ sub run_test
     my $default_topic = $test_data->{default_topic} // $this->{test_topic};
     my @users;
 
-    if (defined $test_data->{users}) {
-        @users = keys %{$test_data->{users}};
-    } else {
+    if ( defined $test_data->{users} ) {
+        @users = keys %{ $test_data->{users} };
+    }
+    else {
         @users = qw(ScumBag);
         $test_data->{users}{ScumBag} = $test_data->{result};
     }
 
     foreach my $user (@users) {
-        my $session = $this->prepare_new_session($user, $this->{test_web}, $default_topic);
+        my $session =
+          $this->prepare_new_session( $user, $this->{test_web},
+            $default_topic );
+
         # Propagate test web with topics.
-        foreach my $topic (keys %{$test_data->{topics}}) {
+        foreach my $topic ( keys %{ $test_data->{topics} } ) {
             my $new_topic = $topic eq 'default' ? $default_topic : $topic;
 
-            my $new_topic_object = Foswiki::Meta->new( $session, $this->{test_web}, $new_topic, $test_data->{topics}{$topic} );
+            my $new_topic_object = Foswiki::Meta->new(
+                $session,   $this->{test_web},
+                $new_topic, $test_data->{topics}{$topic}
+            );
             $new_topic_object->save;
         }
 
-        my $t_html = $this->expand_source($test_data->{topics}{default});
+        my $t_html = $this->expand_source( $test_data->{topics}{default} );
+
         #say STDERR "Test $test, user $user:\n----\n", $t_html, "\n----";
-        $this->assert_html_equals( $test_data->{users}{$user}, $t_html, "Test $test for user $user: HTML doesn't match" );
+        $this->assert_html_equals( $test_data->{users}{$user},
+            $t_html, "Test $test for user $user: HTML doesn't match" );
     }
 }
 

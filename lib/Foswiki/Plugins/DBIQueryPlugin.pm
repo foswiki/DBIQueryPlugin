@@ -650,7 +650,7 @@ sub initPlugin {
         acl_inheritance => { allow_query => 'allow_do', }, )
       || return 0;
 
-    $baseweb = $web;
+    $baseweb   = $web;
     $basetopic = $topic;
 
     # Example code of how to get a preference value, register a macro
