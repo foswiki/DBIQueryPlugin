@@ -18,9 +18,14 @@ use File::Temp;
 use File::Copy;
 use Data::Dumper;
 
+use Foswiki::Plugins::DBIQueryPlugin;
+
 sub new {
-    my $self = shift()->SUPER::new(@_);
-    return $self;
+    my $this = shift()->SUPER::new(@_);
+
+    $this->generate_test_methods;
+
+    return $this;
 }
 
 # Set up the test fixture
@@ -35,22 +40,22 @@ sub set_up {
 
     my $temp_dir = $this->{db_test_dir}->dirname;
 
+    $this->registerUser( 'DummyGuest', 'Dummy', 'Guest',
+        'nobody@some.domain.org' );
+    $this->registerUser( 'JohnSmith', 'Jogn', 'Smith',
+        'webmaster@some.domain.org' );
+
     $this->assert(
         Foswiki::Func::addUserToGroup(
             $this->{session}{user}, 'AdminGroup', 1
         ),
         "Failed to make $this->{session}{user} a new admin"
     );
+    $this->assert(
+        Foswiki::Func::addUserToGroup( 'DummyGuest', 'DummyGroup', 1 ),
+        'Failed to add DummyGuest to DummyGroup' );
     $this->assert( Foswiki::Func::addUserToGroup( 'ScumBag', 'AdminGroup', 0 ),
         'Failed to make ScumBag a new admin' );
-
-=pod
-    $this->assert(
-        copy($this->{msg_board_sqlite}, $temp_dir),
-        "Copy of $this->{msg_board_sqlite} to $temp_dir: $!"
-    );
-=cut
-
 }
 
 sub tear_down {
@@ -74,7 +79,7 @@ sub loadExtraConfig {
 
     $this->{db_test_dir}   = File::Temp->newdir('dbiqp_tempXXXX');
     $this->{db_msgb_file}  = 'message_board_test.sqlite';
-    $this->{do_test_topic} = "Do" . $this->{test_topic};
+    $this->{do_test_topic} = $this->{_tests_data}{do}{default_topic};
 
     $Foswiki::cfg{Plugins}{DBIQueryPlugin}{Enabled}      = 1;
     $Foswiki::cfg{Plugins}{DBIQueryPlugin}{Debug}        = 0;
@@ -99,7 +104,7 @@ sub loadExtraConfig {
             },
             allow_query => {
                 "$this->{test_web}.$this->{test_topic}" =>
-                  [qw(TestGroup AdminGroup)],
+                  [qw(DummyGroup AdminGroup)],
             },
             usermap => {
                 DummyGroup => {
@@ -126,62 +131,37 @@ sub loadExtraConfig {
     };
 }
 
-sub expand_source {
-    my $tt = $_[0]->{test_topicObject};
-    return $tt->renderTML( $tt->expandMacros( $_[1] ) );
-}
-
-sub test_self {
-    my $this = shift;
-}
-
-sub test_version {
-    my $this       = shift;
-    my $test_topic = $this->{test_topicObject};
-
-    my $v_topic = '%DBI_VERSION%';
-
-    my $v_html = $this->expand_source($v_topic);
-    $this->assert_html_equals(
-        $v_html,
-        "$Foswiki::Plugins::DBIQueryPlugin::VERSION",
-        "\%DBI_VERSION\% output mismatch"
-    );
-}
-
-sub test_query {
+sub generate_test_methods {
     my $this = shift;
 
-#my $request = Unit::Request->new();
-#say STDERR "Before new session: ", $this->{test_web}, ".", $this->{test_topic};
-#my $session = $this->createNewFoswikiSession( 'ScumBag', $request );
-#say STDERR "After new session: ", $this->{test_web}, ".", $this->{test_topic};
+    my $inclusion_topic_name = "InclusionTestTopic";
+    my $do_test_text         = "DBI_DO test ok!";
+    my $do_test_topic        = 'Do' . $this->{test_web};
+    my $dbi_code_topic       = 'ScriptTestTopic';
+    my $do_error_text        = qq(<strong><span class='foswikiRedFG'>ERROR:
+<pre>No access to modify mock&#95;connection DB at TemporaryDBIQueryPluginTestsTestWebDBIQueryPluginTests.$do_test_topic.
+</pre></span></strong>);
 
-#my $test_topic = Foswiki::Meta->new( $session, $this->{test_web}, $this->{test_topic} );
+    $this->{_tests_data} = {
+        version => {
 
-    #say STDERR Dumper($Foswiki::cfg{Extensions}{DatabaseContrib}{connections});
-
-    my $test_topic = $this->{test_topicObject};
-
-    my $q_topic = <<TSRC;
+            #default_topic => $this->{do_test_topic},
+            topics => { default => '%DBI_VERSION%', },
+            result => "$Foswiki::Plugins::DBIQueryPlugin::VERSION",
+        },
+        query => {
+            topics => {
+                default => q(
 %DBI_QUERY{"mock_connection"}%
 SELECT col1, col2 FROM test_table
 .header
 |*Col1*|*Col2*|
 .body
 |%col1%|%col2%|
-%DBI_QUERY%
-TSRC
-
-#say STDERR "1. this topic object: ", $session->{user}, "@", $test_topic->web, ".", $test_topic->topic;
-#say STDERR "expandMacros";
-    my $q_html = $test_topic->renderTML( $test_topic->expandMacros($q_topic) );
-
-    #say STDERR "HTML:\n", $q_html;
-
-    $this->assert_html_equals( $q_html,
-        <<QHTML, "\%DBI_QUERY\% output mismatch" );
-<nop>
+%DBI_QUERY%),
+            },
+            users => {
+                ScumBag => q(<nop>
 <table border="1" class="foswikiTable" rules="none">
 <thead>
     <tr class="foswikiTableOdd foswikiTableRowdataBgSorted0 foswikiTableRowdataBg0">
@@ -194,25 +174,35 @@ TSRC
         <td></td>
     </tr>
 </tbody>
-</table>
-QHTML
-}
-
-sub test_code {
-    my $this = shift;
-
-    my $c_topic = <<TSRC;
+</table>),
+                DummyGuest => q(<nop>
+<table border="1" class="foswikiTable" rules="none">
+<thead>
+    <tr class="foswikiTableOdd foswikiTableRowdataBgSorted0 foswikiTableRowdataBg0">
+        <th class="foswikiTableCol0 foswikiFirstCol foswikiLast"> <a href="/bin//TemporaryDBIQueryPluginTestsTestWebDBIQueryPluginTests/TestTopicDBIQueryPluginTests?sortcol=0;table=1;up=0#sorted_table" rel="nofollow" title="Sort by this column">Col1</a> </th>
+        <th class="foswikiTableCol1 foswikiLastCol foswikiLast"> <a href="/bin//TemporaryDBIQueryPluginTestsTestWebDBIQueryPluginTests/TestTopicDBIQueryPluginTests?sortcol=1;table=1;up=0#sorted_table" rel="nofollow" title="Sort by this column">Col2</a> </th>
+    </tr>
+</thead>
+<tbody>
+    <tr style="display:none;">
+        <td></td>
+    </tr>
+</tbody>
+</table>),
+                JohnSmith => q(<strong><span class='foswikiRedFG'>ERROR:
+<pre>No access to query mock&#95;connection DB at TemporaryDBIQueryPluginTestsTestWebDBIQueryPluginTests.TestTopicDBIQueryPluginTests.
+</pre></span></strong>),
+            },
+        },
+        code => {
+            topics => {
+                default => q(
 %DBI_CODE{"script"}%
 print 'It works!';
-%DBI_CODE%
-TSRC
-
-    my $c_html = $this->expand_source($c_topic);
-
-    #say STDERR "c_html: $c_html";
-    $this->assert_html_equals( $c_html,
-        <<CHTML, "\%DBI_CODE\% output mismatch" );
-<table width="100%" border="0" cellspacing="5px">
+%DBI_CODE%),
+            },
+            users => {
+                ScumBag => q(<table width="100%" border="0" cellspacing="5px">
     <tr>
         <td nowrap> <strong>Script name</strong> </td>
         <td> <code>script</code> </td>
@@ -224,14 +214,25 @@ TSRC
         </pre> </td>
     </tr>
 </table>
-CHTML
-}
-
-sub test_subquery {
-    my $this = shift;
-
-    my $s_topic = <<TSRC;
-%DBI_CALL{"test_subquery"}%
+),
+                JohnSmith => q(<table width="100%" border="0" cellspacing="5px">
+    <tr>
+        <td nowrap> <strong>Script name</strong> </td>
+        <td> <code>script</code> </td>
+    </tr>
+    <tr valign="top">
+        <td nowrap> <strong>Script code</strong> </td>
+        <td> <pre>
+            print 'It works!';
+        </pre> </td>
+    </tr>
+</table>
+),
+            },
+        },
+        subquery => {
+            topics => {
+                default => q(%DBI_CALL{"test_subquery"}%
 %DBI_QUERY{"mock_connection" subquery="test_subquery"}%
 SELECT f1, f2 FROM test_table
 .header
@@ -239,15 +240,10 @@ SELECT f1, f2 FROM test_table
 .body
 |%f1%|%f2%|
 %DBI_QUERY%
-TSRC
-
-    my $s_html = $this->expand_source($s_topic);
-
-    #say STDERR "s_html: $s_html";
-
-    $this->assert_html_equals( $s_html,
-        <<SHTML, "\%DBI_CALL\% output mismatch" );
-<nop>
+),
+            },
+            users => {
+                ScumBag => q(<nop>
 <table border="1" class="foswikiTable" rules="none">
     <thead>
         <tr class="foswikiTableOdd foswikiTableRowdataBgSorted0 foswikiTableRowdataBg0">
@@ -261,21 +257,142 @@ TSRC
         </tr>
     </tbody>
 </table>
-SHTML
+),
+                DummyGuest => q(<nop>
+<table border="1" class="foswikiTable" rules="none">
+    <thead>
+        <tr class="foswikiTableOdd foswikiTableRowdataBgSorted0 foswikiTableRowdataBg0">
+            <th class="foswikiTableCol0 foswikiFirstCol foswikiLast"> <a href="/bin//TemporaryDBIQueryPluginTestsTestWebDBIQueryPluginTests/TestTopicDBIQueryPluginTests?sortcol=0;table=1;up=0#sorted_table" rel="nofollow" title="Sort by this column">First Column</a> </th>
+            <th class="foswikiTableCol1 foswikiLastCol foswikiLast"> <a href="/bin//TemporaryDBIQueryPluginTestsTestWebDBIQueryPluginTests/TestTopicDBIQueryPluginTests?sortcol=1;table=1;up=0#sorted_table" rel="nofollow" title="Sort by this column">Second Column</a> </th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr style="display:none;">
+            <td></td>
+        </tr>
+    </tbody>
+</table>
+),
+                JohnSmith => q(<strong><span class='foswikiRedFG'>ERROR:
+<pre>No access to query mock&#95;connection DB at TemporaryDBIQueryPluginTestsTestWebDBIQueryPluginTests.TestTopicDBIQueryPluginTests.
+</pre></span></strong>),
+            },
+        },
+        do => {
+            default_topic => $do_test_topic,
+            topics        => {
+                default => qq(\%DBI_DO{"mock_connection"}%
+\$rc = "$do_test_text";
+%DBI_DO%
+),
+            },
+            users => {
+                ScumBag    => $do_test_text,
+                DummyGuest => $do_error_text,
+                JohnSmith  => $do_error_text,
+            },
+        },
+        include => {
+            default_topic => $do_test_topic,
+            topics        => {
+                default =>
+                  qq(\%INCLUDE{"$this->{test_web}.$inclusion_topic_name"}%),
+                $inclusion_topic_name => qq(\%DBI_DO{"mock_connection"}%
+\$rc = "$do_test_text";
+%DBI_DO%
+),
+            },
+            users => {
+                ScumBag    => $do_test_text,
+                DummyGuest => $do_error_text,
+                JohnSmith  => $do_error_text,
+            },
+        },
+        crosstopic_do => {
+            default_topic => $do_test_topic,
+            topics        => {
+                default =>
+qq(\%DBI_DO{"mock_connection" topic="$this->{test_web}.$dbi_code_topic" script="test_script"}%),
+                $dbi_code_topic => qq(\%DBI_CODE{"test_script"}%
+\$rc = "$do_test_text";
+%DBI_CODE%
+),
+            },
+            users => {
+                ScumBag    => $do_test_text,
+                DummyGuest => $do_error_text,
+                JohnSmith  => $do_error_text,
+            },
+        },
+    };
+
+    # Generate subs for tests
+    foreach my $test ( keys %{ $this->{_tests_data} } ) {
+        my $test_sub = "sub test_$test { \$_[0]->run_test(\"$test\"); }; 1;";
+        die "Cannot generate test `$test': $@" unless eval $test_sub;
+    }
 }
 
-sub test_do {
+sub expand_source {
+    my $tt = $_[0]->{test_topicObject};
+    return $tt->renderTML( $tt->expandMacros( $_[1] ) );
+}
+
+sub prepare_new_session {
     my $this = shift;
+    my ( $user, $web, $topic ) = @_;
 
-    my $d_topic = <<TSRC;
-%DBI_DO{"mock_connection"}%
-\$rc .= "Test ok!";
-%DBI_DO%
-TSRC
+    my ( $request, $session );
+    $this->assert_not_null( $request = Unit::Request->new(),
+        "Failed to create a new request" );
+    $request->path_info("/$web/$topic");
 
-    my $d_html = $this->expand_source($d_topic);
-    say STDERR $d_html;
+    $this->assert_not_null( $session =
+          $this->createNewFoswikiSession( $user, $request ),
+        "Failed to create a new session" );
 
+    return $session;
+}
+
+sub run_test {
+    my $this = shift;
+    my ($test) = @_;
+
+    my $test_data = $this->{_tests_data}{$test};
+
+    my $default_topic = $test_data->{default_topic} // $this->{test_topic};
+    my @users;
+
+    if ( defined $test_data->{users} ) {
+        @users = keys %{ $test_data->{users} };
+    }
+    else {
+        @users = qw(ScumBag);
+        $test_data->{users}{ScumBag} = $test_data->{result};
+    }
+
+    foreach my $user (@users) {
+        my $session =
+          $this->prepare_new_session( $user, $this->{test_web},
+            $default_topic );
+
+        # Propagate test web with topics.
+        foreach my $topic ( keys %{ $test_data->{topics} } ) {
+            my $new_topic = $topic eq 'default' ? $default_topic : $topic;
+
+            my $new_topic_object = Foswiki::Meta->new(
+                $session,   $this->{test_web},
+                $new_topic, $test_data->{topics}{$topic}
+            );
+            $new_topic_object->save;
+        }
+
+        my $t_html = $this->expand_source( $test_data->{topics}{default} );
+
+        #say STDERR "Test $test, user $user:\n----\n", $t_html, "\n----";
+        $this->assert_html_equals( $test_data->{users}{$user},
+            $t_html, "Test $test for user $user: HTML doesn't match" );
+    }
 }
 
 1;
