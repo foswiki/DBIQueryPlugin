@@ -17,6 +17,7 @@ use CGI;
 use File::Temp;
 use File::Copy;
 use Data::Dumper;
+use Time::HiRes qw(time);
 
 use Foswiki::Plugins::DBIQueryPlugin;
 
@@ -144,13 +145,15 @@ sub generate_test_methods {
 
     $this->{_tests_data} = {
         version => {
+            disabled => 0,
 
             #default_topic => $this->{do_test_topic},
             topics => { default => '%DBI_VERSION%', },
             result => "$Foswiki::Plugins::DBIQueryPlugin::VERSION",
         },
         query => {
-            topics => {
+            disabled => 0,
+            topics   => {
                 default => q(
 %DBI_QUERY{"mock_connection"}%
 SELECT col1, col2 FROM test_table
@@ -195,7 +198,8 @@ SELECT col1, col2 FROM test_table
             },
         },
         code => {
-            topics => {
+            disabled => 0,
+            topics   => {
                 default => q(
 %DBI_CODE{"script"}%
 print 'It works!';
@@ -229,9 +233,57 @@ print 'It works!';
 </table>
 ),
             },
+            repeat_count => 5000,
         },
+
+        code_file => {
+            disabled => 0,
+            topics   => {
+                default => q(
+%DBI_TEST_FILE{"script"}%),
+            },
+            query_data => {
+                default => [
+                    {
+                        params  => '"script"',
+                        content => "\nprint 'It works!';\n"
+                    },
+                ],
+            },
+            users => {
+                ScumBag => q(<table width="100%" border="0" cellspacing="5px">
+    <tr>
+        <td nowrap> <strong>Script name</strong> </td>
+        <td> <code>script</code> </td>
+    </tr>
+    <tr valign="top">
+        <td nowrap> <strong>Script code</strong> </td>
+        <td> <pre>
+            print 'It works!';
+        </pre> </td>
+    </tr>
+</table>
+),
+                JohnSmith => q(<table width="100%" border="0" cellspacing="5px">
+    <tr>
+        <td nowrap> <strong>Script name</strong> </td>
+        <td> <code>script</code> </td>
+    </tr>
+    <tr valign="top">
+        <td nowrap> <strong>Script code</strong> </td>
+        <td> <pre>
+            print 'It works!';
+        </pre> </td>
+    </tr>
+</table>
+),
+            },
+            repeat_count => 5000,
+        },
+
         subquery => {
-            topics => {
+            disabled => 0,
+            topics   => {
                 default => q(%DBI_CALL{"test_subquery"}%
 %DBI_QUERY{"mock_connection" subquery="test_subquery"}%
 SELECT f1, f2 FROM test_table
@@ -279,6 +331,7 @@ SELECT f1, f2 FROM test_table
             },
         },
         do => {
+            disabled      => 0,
             default_topic => $do_test_topic,
             topics        => {
                 default => qq(\%DBI_DO{"mock_connection"}%
@@ -293,6 +346,7 @@ SELECT f1, f2 FROM test_table
             },
         },
         include => {
+            disabled      => 0,
             default_topic => $do_test_topic,
             topics        => {
                 default =>
@@ -309,6 +363,7 @@ SELECT f1, f2 FROM test_table
             },
         },
         crosstopic_do => {
+            disabled      => 0,
             default_topic => $do_test_topic,
             topics        => {
                 default =>
@@ -328,6 +383,7 @@ qq(\%DBI_DO{"mock_connection" topic="$this->{test_web}.$dbi_code_topic" script="
 
     # Generate subs for tests
     foreach my $test ( keys %{ $this->{_tests_data} } ) {
+        next if $this->{_tests_data}{$test}{disabled};
         my $test_sub = "sub test_$test { \$_[0]->run_test(\"$test\"); }; 1;";
         die "Cannot generate test `$test': $@" unless eval $test_sub;
     }
@@ -378,20 +434,63 @@ sub run_test {
 
         # Propagate test web with topics.
         foreach my $topic ( keys %{ $test_data->{topics} } ) {
-            my $new_topic = $topic eq 'default' ? $default_topic : $topic;
+            my ( $new_topic, $new_topic_object );
+            if ( $topic eq 'default' ) {
+                $new_topic_object = $this->{test_topicObject};
+                $new_topic        = $default_topic;
+            }
+            else {
+                $new_topic = $topic;
 
-            my $new_topic_object = Foswiki::Meta->new(
-                $session,   $this->{test_web},
-                $new_topic, $test_data->{topics}{$topic}
-            );
+                $new_topic_object =
+                  Foswiki::Meta->new( $session, $this->{test_web}, $new_topic );
+            }
+
+            $new_topic_object->text( $test_data->{topics}{$topic} );
+
+            if ( defined $test_data->{query_data} ) {
+                my $qdata     = $test_data->{query_data};
+                my $qdata_key = $topic;
+                unless ( defined $qdata->{$qdata_key} ) {
+                    $qdata_key = "$this->{test_web}.$new_topic";
+                }
+                if ( defined $qdata->{$qdata_key} ) {
+                    foreach my $topic_data ( @{ $qdata->{$qdata_key} } ) {
+                        say STDERR
+"Storing for $this->{test_web}.$new_topic; params={$topic_data->{params}}";
+                        Foswiki::Plugins::DBIQueryPlugin::_storeQueryData(
+                            $this->{test_web}, $new_topic,
+                            $topic_data->{params} // '',
+                            $topic_data->{content}
+                        );
+                        Foswiki::Plugins::DBIQueryPlugin::_storeCommit(
+                            $new_topic_object);
+                    }
+                }
+            }
+
             $new_topic_object->save;
+            say STDERR "*NEW TOPIC OBJECT*:", $new_topic_object->stringify;
         }
+        say STDERR "*TEST TOPIC OBJECT*:", $this->{test_topicObject}->stringify;
 
         my $t_html = $this->expand_source( $test_data->{topics}{default} );
 
         #say STDERR "Test $test, user $user:\n----\n", $t_html, "\n----";
         $this->assert_html_equals( $test_data->{users}{$user},
             $t_html, "Test $test for user $user: HTML doesn't match" );
+
+        if ( $test_data->{repeat_count} ) {
+            my $start_at = time;
+            for ( 1 .. $test_data->{repeat_count} ) {
+                $this->expand_source( $test_data->{topics}{default} );
+            }
+            my $done_at = time;
+            my $elapsed = $done_at - $start_at;
+            say STDERR "'$test' benchmark run for ",
+              $test_data->{repeat_count}, " times: ", $elapsed, "sec; ",
+              $test_data->{repeat_count} / $elapsed, " times/sec";
+        }
     }
 }
 

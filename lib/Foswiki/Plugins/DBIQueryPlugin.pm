@@ -13,6 +13,9 @@ use DBI;
 use Error qw(:try);
 use CGI qw(:html2);
 use Carp qw(longmess);
+use Storable qw(freeze thaw);
+use File::Path qw(make_path);
+use Data::Dumper;
 use Foswiki::Contrib::DatabaseContrib;
 
 # $VERSION is referred to by Foswiki, and is the only global variable that
@@ -63,8 +66,10 @@ our $SHORTDESCRIPTION =
 # entries so they can be used with =configure=.
 our $NO_PREFS_IN_TOPIC = 1;
 
+our $USE_META_STORE = 1;
+
 # =$dbc= - DatabaseContrib object.
-my ( $topic, $web, $basetopic, $baseweb, %queries, %subquery_map, $dbc );
+my ( $basetopic, $baseweb, %queries, %subquery_map, $dbc, $workArea );
 
 sub message_prefix {
     my @call = caller(2);
@@ -72,9 +77,11 @@ sub message_prefix {
     return
         "- "
       . $call[3]
-      . (    defined $web
-          && defined $topic ? "( $web.$topic )" : "( *uninitialized* )" )
-      . "\:$line ";
+      . (
+        defined $baseweb && defined $basetopic
+        ? "( $baseweb.$basetopic )"
+        : "( *uninitialized* )"
+      ) . "\:$line ";
 }
 
 sub warning(@) {
@@ -383,7 +390,7 @@ sub getQueryResult {
     my $conname = $params->{_DEFAULT};
     $columns ||= {};
 
-    return wikiErrMsg("No access to query $conname DB at $web.$topic.")
+    return wikiErrMsg("No access to query $conname DB at $baseweb.$basetopic.")
       unless defined( $query->{call} )
       || $dbc->access_allowed( $conname, "$baseweb.$basetopic", 'allow_query' );
 
@@ -422,7 +429,7 @@ sub getQueryResult {
         my $statement =
           Foswiki::Func::expandCommonVariables(
             expandColumns( $query->{statement}, $columns ),
-            $topic, $web );
+            $basetopic, $baseweb );
         $query->{expanded_statement} = $statement;
         dprint $statement;
 
@@ -511,7 +518,7 @@ sub {
             my \@val = \$request->multi_param(\$cgiParam);
             \$httpParams{\$cgiParam} = (\$multivalued{\$cgiParam} || (\@val > 1)) ? \\\@val : \$val[0];
         }
-        dprint( "doQuery code for $web.$topic\n" );
+        dprint( "doQuery code for $baseweb.$basetopic\n" );
         my \$rc = "";
 
         try {
@@ -634,7 +641,7 @@ FOOBARSOMETHING. This avoids namespace issues.
 =cut
 
 sub initPlugin {
-    ( $topic, $web ) = @_;
+    my ( $topic, $web ) = @_;
 
     dprint "DBIQueryPlugin::initPlugin(", join( ",", @_ ), ")";
 
@@ -648,11 +655,10 @@ sub initPlugin {
     Foswiki::Meta::registerMETA(
         'DBI_QUERY_PLUGIN',
         many    => 1,
-        require => [qw( code name macro )],
-        allowed => [qw( params )],
+        require => [qw( name queryData )],
     );
 
-    Foswiki::Func::registerTagHandler( 'DBI_TEST', \&_DBI_TEST );
+    Foswiki::Func::registerTagHandler( 'DBI_TEST_FILE', \&_DBI_TEST_FILE );
 
     $dbc =
       Foswiki::Contrib::DatabaseContrib->new(
@@ -661,6 +667,7 @@ sub initPlugin {
 
     $baseweb   = $web;
     $basetopic = $topic;
+    $workArea  = Foswiki::Func::getWorkArea('DBIQueryPlugin');
 
     # Example code of how to get a preference value, register a macro
     # handler and register a RESTHandler (remove code you do not need)
@@ -724,19 +731,37 @@ sub initPlugin {
 #    # $params->{sideorder} will be 'onions'
 #}
 
-sub _DBI_TEST {
+sub _DBI_TEST_FILE {
     my ( $session, $params, $topic, $web, $topicObject ) = @_;
 
     my $rc = "";
 
-    my $attrs = $topicObject->get( 'DBI_QUERY_PLUGIN', $params->{_DEFAULT} );
+    my $queryData =
+      _readQueryData( $params->{_DEFAULT},
+        $USE_META_STORE ? $topicObject : ( $web, $topic ) );
 
-    throw Error::Simple("No stored DBI_TEST with id=$params->{_DEFAULT}")
-      unless defined $attrs;
+    my $content = $queryData->{content} // $queryData->{code};
 
-    $rc .= "*DBI_TEST:* <pre>$attrs->{code}</pre>";
+    unless ( $content =~ /^\s*%CODE{.*?}%(.*)%ENDCODE%\s*$/s ) {
+        $content = "<pre>$content</pre>";
+    }
 
-    return $rc;
+    return <<EOT;
+<table width=\"100\%\" border=\"0\" cellspacing="5px">
+  <tr>
+    <td nowrap> *Script name* </td>
+    <td> =$params->{_DEFAULT}= </td>
+  </tr>
+  <tr valign="top">
+    <td nowrap> *Script code* </td>
+    <td> $content </td>
+  </tr>
+</table>
+EOT
+
+#$rc .= "*DBI_TEST_FILE(id=$params->{_DEFAULT}, file=" . _getQueryFileName( $web, $topic, $params->{_DEFAULT} ) . "):* <pre>$queryData->{content}%BR%" . Dumper($params) . "</pre>";
+
+    #return $rc;
 }
 
 =begin TML
@@ -886,15 +911,13 @@ Foswiki:Development.AddToZoneFromPluginHandlers if you are calling
 =cut
 
 sub commonTagsHandler {
-    ( undef, $topic, $web ) = @_;
+    my ( undef, $topic, $web ) = @_;
 
     dprint(
         "CommonTagsHandler( $_[2].$_[1] )",
         (
             $_[3]
-            ? ": included from "
-              . Foswiki::Func::getPreferencesValue('BASEWEB') . "."
-              . Foswiki::Func::getPreferencesValue('BASETOPIC')
+            ? ": included from " . $baseweb . "." . $basetopic
             : ""
         )
     );
@@ -933,7 +956,7 @@ Foswiki:Development.AddToZoneFromPluginHandlers if you are calling
 =cut
 
 sub beforeCommonTagsHandler {
-    ( undef, $topic, $web ) = @_;
+    my ( undef, $topic, $web ) = @_;
 
     dprint "Starting processing.";
 
@@ -1069,7 +1092,7 @@ sub postRenderingHandler {
     #    # as if it was passed by reference; for example:
     #    # $_[0] =~ s/SpecialString/my alternative/ge;
 
-    dprint "endRenderingHandler( $web.$topic )";
+    dprint "endRenderingHandler( $baseweb.$basetopic )";
 
     $_[0] =~
 s/$Foswiki::cfg{Plugins}{DBIQueryPlugin}{protectStart}(.*?)$Foswiki::cfg{Plugins}{DBIQueryPlugin}{protectEnd}/&unprotectValue($1)/ges;
@@ -1089,36 +1112,63 @@ in the edit box. It is called once when the =edit= script is run.
 
 *Since:* Foswiki::Plugins::VERSION = '2.0'
 
-%DBI_TEST{'conn' p1=1 p2=2}%
+%DBI_TEST_FILE{'conn' p1=1 p2=2}%
 some
 code
-%DBI_TEST%
+%DBI_TEST_FILE%
 
 =cut
 
-sub fetchMetaQuery {
-    my ( $meta, $id ) = @_;
+sub _readQueryData {
+    my $id = shift;
+    my $queryData;
+    if ($USE_META_STORE) {
+        my $meta = shift;
 
-    unless ( defined $id ) {
-        return "%DBI_TEST{}% *id is missing*";
+        my $attrs = $meta->get( 'DBI_QUERY_PLUGIN', $id );
+        unless ($attrs) {
+            return "%DBI_TEST_FILE{$id}% *no stored attributes for id=$id*";
+        }
+        $queryData = $attrs->{queryData};
     }
+    else {
+        my ( $web, $topic ) = @_;
+        my $queryFile = _getQueryFileName( $web, $topic, $id );
 
-    my $attrs = $meta->get( 'DBI_QUERY_PLUGIN', $id );
-
-    unless ($attrs) {
-        return "%DBI_TEST{$id}% *no stored attributes for id=$id*";
+        $queryData = Foswiki::Func::readFile( $queryFile, 1 );
+        unless ( length($queryData) > 0 ) {
+            warn "Failed to read query for ID=$id";
+            return { code => "*NoCode from $queryFile*", paramsStr => "" };
+        }
     }
+    return thaw($queryData);
+}
 
-    return "%DBI_TEST{$attrs->{params}}%$attrs->{code}%DBI_TEST%";
+sub _fetchQueryData {
+    my $paramStr = shift;
+
+    my %params = Foswiki::Func::extractParameters($paramStr);
+    my $queryData = _readQueryData( $params{_DEFAULT}, @_ );
+
+    return
+        "%DBI_TEST_FILE{$queryData->{paramsStr}}%"
+      . ( $queryData->{content} // $queryData->{code} )
+      . "%DBI_TEST_FILE%";
 }
 
 sub beforeEditHandler {
     my ( $text, $topic, $web ) = @_;
 
-    my $meta =
-      Foswiki::Meta->load( $Foswiki::Plugins::SESSION, $web, $topic, $text );
-
-    $_[0] =~ s/%DBI_TEST{(.*?)}%/&fetchMetaQuery($meta, $1)/ges;
+    if ($USE_META_STORE) {
+        my $meta =
+          Foswiki::Meta->load( $Foswiki::Plugins::SESSION, $web, $topic,
+            $text );
+        $_[0] =~ s/%DBI_TEST_FILE{(.*?)}%/&_fetchQueryData($1, $meta)/ges;
+    }
+    else {
+        $_[0] =~
+          s/%DBI_TEST_FILE{(.*?)}%/&_fetchQueryData($1, $web, $topic)/ges;
+    }
 
     # You can work on $text in place by using the special perl
     # variable $_[0]. These allow you to operate on $text
@@ -1145,13 +1195,63 @@ handler. Use the =$meta= object.
 
 =cut
 
-sub storeMetaQuery {
-    my ( $metas, $params, $code ) = @_;
-    my %params = Foswiki::Func::extractParameters($params);
-    my $id = $params{id} // newQID;
-    push @$metas,
-      { macro => 'DBI_TEST', params => $params, code => $code, name => $id };
-    return "%DBI_TEST{$id}%";
+sub _getWorkDir {
+    my ( $web, $topic ) = @_;
+
+    dprint "_getWorkDir for $web.$topic...";
+
+    my $workDir = "$workArea/$web/$topic";
+
+    # XXX TODO Proper error processing required here.
+    unless ( -e $workDir ) {
+        make_path($workDir);
+    }
+    die "No working directory found" unless -d $workDir;
+    return $workDir;
+}
+
+sub _getQueryFileName {
+    my ( $web, $topic, $id ) = @_;
+    my $workDir = _getWorkDir( $web, $topic );
+
+# TODO Transform $id into a valid filename here. Perhaps with some help from base64 encoding.
+    return "$workDir/$id";
+}
+
+sub _dbiMetas {
+    state $dbiMetas = [];
+    push @$dbiMetas, @_
+      if @_ > 0;
+    return wantarray ? @$dbiMetas : $dbiMetas;
+}
+
+sub _storeQueryData {
+    my ( $web, $topic, $params, $content ) = @_;
+    my %params    = Foswiki::Func::extractParameters($params);
+    my $id        = $params{_DEFAULT} // newQID;
+    my $queryData = freeze(
+        {
+            params    => \%params,
+            paramsStr => $params,
+            id        => $params{id} // newQID,
+            content   => $content,
+        }
+    );
+    if ($USE_META_STORE) {
+        _dbiMetas( { queryData => $queryData, name => $id } );
+    }
+    else {
+        my $queryFile = _getQueryFileName( $web, $topic, $id );
+        Foswiki::Func::saveFile( $queryFile, $queryData, 1 );
+    }
+    return "%DBI_TEST_FILE{\"$id\"}%";
+}
+
+sub _storeCommit {
+    my $meta = shift;
+    if ($USE_META_STORE) {
+        $meta->putAll( 'DBI_QUERY_PLUGIN', (_dbiMetas) );
+    }
 }
 
 sub afterEditHandler {
@@ -1162,22 +1262,12 @@ sub afterEditHandler {
     # as if it was passed by reference; for example:
     # $_[0] =~ s/SpecialString/my alternative/ge;
 
-    unless ( defined $meta ) {
-        $meta = Foswiki::Meta->load( $Foswiki::Plugins::SESSION, $web, $topic,
-            $text );
-    }
-
-    my @dbi_meta;
+# TODO Topic directory need to be cleaned from old query files and repopulated with new ones.
 
     $_[0] =~
-      s/%DBI_TEST{(.*?)}%(.*?)%DBI_TEST%/&storeMetaQuery(\@dbi_meta, $1,$2)/ges;
+s/%DBI_TEST_FILE{(.*?)}%(.*?)%DBI_TEST_FILE%/&_storeQueryData($web, $topic, $1, $2)/ges;
 
-    $meta->putAll( 'DBI_QUERY_PLUGIN', @dbi_meta );
-
-    #foreach (@dbi_meta) {
-    #    dprint "Storing META: ", $_->{name};
-    #    $meta->putKeyed( 'DBI_QUERY_PLUGIN', $_ );
-    #}
+    _storeCommit($meta);
 }
 
 =begin TML

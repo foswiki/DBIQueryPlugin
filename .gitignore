@@ -6,3 +6,5 @@ DBIQueryPlugin.zip
 DBIQueryPlugin_installer
 DBIQueryPlugin_installer.pl
 test/unit/DBIQueryPlugin/testlogs/
+tags
+perltags
