@@ -2,7 +2,7 @@
 %META:TOPICPARENT{name="Macros"}%
 ---+++ DBI_CALL -- directly call a subquery.
 
-=%<nop>DBI_CALL{...}%= directly calls a subquery and pass over optional named parameters simulating [[VarDBI_QUERY#DbiSubquery][=%<nop>DBI_SUBQUERY%=] call.
+=%<nop>DBI_CALL{...}%= directly calls a subquery and pass over optional named parameters simulating [[VarDBI_QUERY#DbiSubquery][=%<nop>DBI_SUBQUERY%=]] call.
 
 ---++++ Parameters
 

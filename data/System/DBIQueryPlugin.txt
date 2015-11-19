@@ -263,6 +263,7 @@ topic. After that Perl code becomes a part of an anonymous =sub=.  Several
 variables are available to the code:
 
 |*Variable*|*Description*|
+|=$dbc=|DatabaseContrib object.|
 |=$dbh=|Database connection handle.|
 |=$request=|A request object as returned by =%WIKITOOLNAME%::Func::getRequestObject()=. Mostly compatible with CGI module API.|
 |=$varParams=|Parameters specified in =%<nop>DBI_DO{...}%=. User can put any number of addition parameters there besides those described in [[#DbiDoSyntax][syntax section]].|

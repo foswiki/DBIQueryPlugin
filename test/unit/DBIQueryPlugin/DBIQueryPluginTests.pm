@@ -278,6 +278,37 @@ SELECT f1, f2 FROM test_table
 </pre></span></strong>),
             },
         },
+        subquery_do => {
+            default_topic => $do_test_topic,
+            topics        => {
+                default => qq(\%DBI_CALL{"test_subquery"}%
+\%DBI_DO{"mock_connection" subquery="test_subquery"}%
+\$rc = "$do_test_text";
+%DBI_DO%
+),
+            },
+            users => {
+                ScumBag    => $do_test_text,
+                DummyGuest => $do_error_text,
+                JohnSmith  => $do_error_text,
+            },
+        },
+        subquery_parametrized_do => {
+            default_topic => $do_test_topic,
+            topics        => {
+                default =>
+qq(\%DBI_CALL{"test_subquery" param1="Param 1" param2="Param 2"}%
+\%DBI_DO{"mock_connection" subquery="test_subquery"}%
+\$rc = "$do_test_text \$dbRecord->{param1} \$dbRecord->{param2}";
+%DBI_DO%
+),
+            },
+            users => {
+                ScumBag    => "$do_test_text Param 1 Param 2",
+                DummyGuest => $do_error_text,
+                JohnSmith  => $do_error_text,
+            },
+        },
         do => {
             default_topic => $do_test_topic,
             topics        => {
