@@ -315,7 +315,7 @@ sub dbiCode {
 
     %params = Foswiki::Func::extractParameters($param_str);
 
-    unless ( $content =~ /^\s*%CODE{.*?}%(.*)%ENDCODE%\s*$/s ) {
+    unless ( $content =~ /^\s*%CODE\{.*?\}%(.*)%ENDCODE%\s*$/s ) {
         $content = "<pre>$content</pre>";
     }
 
