@@ -218,7 +218,7 @@ sub storeDoQuery {
                     "%<nop>DBI_DO% script name must be a valid identifier")
                   unless $params{script} =~ /^\w\w*$/;
                 if ( $content =~
-                    /%DBI_CODE{"$params{script}"}%(.*?)%DBI_CODE%/s )
+                    /%DBI_CODE\{"$params{script}"\}%(.*?)%DBI_CODE%/s )
                 {
                     $content = $1;
                 }
@@ -226,7 +226,7 @@ sub storeDoQuery {
                     undef $content;
                 }
                 if ( defined $content ) {
-                    $content =~ s/^\s*%CODE{.*?}%(.*)%ENDCODE%\s*$/$1/s;
+                    $content =~ s/^\s*%CODE\{.*?\}%(.*)%ENDCODE%\s*$/$1/s;
                     $content =~ s/^\s*<pre>(.*)<\/pre>\s*$/$1/s;
                 }
             }
@@ -581,17 +581,18 @@ sub processPage {
 
     my $doHandle = 0;
     $_[0] =~ s/%DBI_VERSION%/$VERSION/gs;
-    if (
-        $_[0] =~ s/%DBI_DO{(.*?)}%(?:(.*?)%DBI_DO%)?/&storeDoQuery($1, $2)/ges )
+    if ( $_[0] =~
+        s/%DBI_DO\{(.*?)\}%(?:(.*?)%DBI_DO%)?/&storeDoQuery($1, $2)/ges )
     {
         $doHandle = 1;
     }
-    $_[0] =~ s/\%DBI_CODE{(.*?)}%(.*?)\%DBI_CODE%/&dbiCode($1, $2)/ges;
-    if ( $_[0] =~ s/%DBI_QUERY{(.*?)}%(.*?)%DBI_QUERY%/&storeQuery($1, $2)/ges )
+    $_[0] =~ s/\%DBI_CODE\{(.*?)\}%(.*?)\%DBI_CODE%/&dbiCode($1, $2)/ges;
+    if ( $_[0] =~
+        s/%DBI_QUERY\{(.*?)\}%(.*?)%DBI_QUERY%/&storeQuery($1, $2)/ges )
     {
         $doHandle = 1;
     }
-    if ( $_[0] =~ s/%DBI_CALL{(.*?)}%/&storeCallQuery($1)/ges ) {
+    if ( $_[0] =~ s/%DBI_CALL\{(.*?)\}%/&storeCallQuery($1)/ges ) {
         $doHandle = 1;
     }
     if ($doHandle) {
