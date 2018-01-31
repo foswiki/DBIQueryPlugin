@@ -13,7 +13,9 @@ use DBI;
 use Error qw(:try);
 use CGI qw(:html2);
 use Carp qw(longmess);
+use Data::Dumper;
 use Foswiki::Contrib::DatabaseContrib;
+use Foswiki::Contrib::JsonRpcContrib ();
 
 # $VERSION is referred to by Foswiki, and is the only global variable that
 # *must* exist in this package. For best compatibility, the simple quoted decimal
@@ -29,7 +31,7 @@ use Foswiki::Contrib::DatabaseContrib;
 #   v1.2.1_001 -> v1.2.2 -> v1.2.2_001 -> v1.2.3
 #   1.21_001 -> 1.22 -> 1.22_001 -> 1.23
 #
-use version; our $VERSION = version->declare('1.06.2');
+use version; our $VERSION = version->declare('1.06.90');
 
 # $RELEASE is used in the "Find More Extensions" automation in configure.
 # It is a manually maintained string used to identify functionality steps.
@@ -44,7 +46,7 @@ use version; our $VERSION = version->declare('1.06.2');
 # It is preferred to keep this compatible with $VERSION. At some future
 # date, Foswiki will deprecate RELEASE and use the VERSION string.
 #
-our $RELEASE = '1.06.2';
+our $RELEASE = '';
 
 # One line description of the module
 our $SHORTDESCRIPTION =
@@ -162,6 +164,16 @@ sub unprotectValue {
     $val =~ s/\.(.)/$1/gs;
     dprint "After unprotecting: $val\n";
     return $val;
+}
+
+sub dbConnect {
+    my $conname = shift;
+    my $dbh     = $dbc->connect($conname);
+    my $errMsg  = defined $DBI::errstr ? ": " . $DBI::errstr : "";
+    throw Error::Simple(
+        "DBI connect error for connection " . $conname . $errMsg )
+      unless defined $dbh;
+    return $dbh;
 }
 
 sub query_params {
@@ -409,10 +421,7 @@ sub getQueryResult {
           ( $query->{subquery} || "UNDEFINED" ), "....\n";
         $columns->{".nesting."} = $query->{_nesting};
 
-        my $dbh = $query->{dbh} = $dbc->connect( $params->{_DEFAULT} );
-        throw Error::Simple(
-            "DBI connect error for connection " . $params->{_DEFAULT} )
-          unless $dbh;
+        my $dbh = $query->{dbh} = dbConnect( $params->{_DEFAULT} );
 
         if ( defined $query->{header} ) {
             $result .= expandColumns( $query->{header}, $columns );
@@ -471,6 +480,35 @@ sub getQueryResult {
     return $result;
 }
 
+sub jrpcFetch {
+    my ( $session, $request ) = @_;
+
+    my $jParams = $request->params;
+    my $conname = $jParams->{connection};
+
+    die "Connection is not defined" unless defined $conname;
+
+    die "No access to query $conname DB for JSON-RPC"
+      unless $dbc->access_allowed( $conname, ".RPC", 'allow_query' );
+
+    my $statement = $jParams->{query};
+    my $values = $jParams->{bind_values} // $jParams->{values}
+      // $jParams->{val};
+
+    my $dbh = dbConnect($conname);
+
+    local $dbh->{FetchHashKeyName} = "NAME";
+
+    my $data =
+      $dbh->selectall_arrayref( $statement, { Slice => {}, RaiseError => 1, },
+        @$values );
+
+    return {
+        rc   => 0,
+        data => $data,
+    };
+}
+
 sub doQuery {
     my ( $qid, $columns ) = @_;
 
@@ -492,9 +530,7 @@ sub doQuery {
     }
 
     # Preparing sub() code.
-    $query->{dbh} = $dbc->connect($conname);
-    throw Error::Simple( "DBI connect error for connection " . $conname )
-      unless $query->{dbh};
+    $query->{dbh} = dbConnect($conname);
     my $request = Foswiki::Func::getRequestObject();
     dprint( "REQUEST ACTIONS: ", $request->action, " thru ", $request->method );
     dprint( "REQUEST PARAMETERS: {", join( "}{", $request->param ), "}\n" );
@@ -652,6 +688,9 @@ sub initPlugin {
 
     $baseweb   = $web;
     $basetopic = $topic;
+
+    Foswiki::Contrib::JsonRpcContrib::registerMethod( "DBIQueryPlugin",
+        "fetch", \&jrpcFetch, );
 
     # Example code of how to get a preference value, register a macro
     # handler and register a RESTHandler (remove code you do not need)
