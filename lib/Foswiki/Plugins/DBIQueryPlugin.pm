@@ -31,7 +31,7 @@ use Foswiki::Contrib::JsonRpcContrib ();
 #   v1.2.1_001 -> v1.2.2 -> v1.2.2_001 -> v1.2.3
 #   1.21_001 -> 1.22 -> 1.22_001 -> 1.23
 #
-use version; our $VERSION = version->declare('1.06.90');
+use version; our $VERSION = version->declare('1.06.91');
 
 # $RELEASE is used in the "Find More Extensions" automation in configure.
 # It is a manually maintained string used to identify functionality steps.
@@ -46,7 +46,7 @@ use version; our $VERSION = version->declare('1.06.90');
 # It is preferred to keep this compatible with $VERSION. At some future
 # date, Foswiki will deprecate RELEASE and use the VERSION string.
 #
-our $RELEASE = '';
+our $RELEASE = '5 Feb 2018';
 
 # One line description of the module
 our $SHORTDESCRIPTION =
@@ -480,22 +480,45 @@ sub getQueryResult {
     return $result;
 }
 
-sub jrpcFetch {
-    my ( $session, $request ) = @_;
+sub _jrpcPrepare {
+    my ( $session, $request, $method ) = @_;
 
     my $jParams = $request->params;
     my $conname = $jParams->{connection};
 
     die "Connection is not defined" unless defined $conname;
 
-    die "No access to query $conname DB for JSON-RPC"
-      unless $dbc->access_allowed( $conname, ".RPC", 'allow_query' );
+    state $method2action = {
+        fetch => {
+            text   => 'query',
+            access => 'allow_query',
+        },
+        do => {
+            text   => 'update',
+            access => 'allow_do',
+        },
+    };
+
+    die "Unknown method: $method" unless defined $method2action->{$method};
+    my ( $mText, $mAccess ) = @{ $method2action->{$method} }{qw<text access>};
+
+    die "No access to $mText $conname DB for JSON-RPC"
+      unless $dbc->access_allowed( $conname, ".RPC", $mAccess );
 
     my $statement = $jParams->{query};
     my $values = $jParams->{bind_values} // $jParams->{values}
       // $jParams->{val};
 
     my $dbh = dbConnect($conname);
+
+    return ( $dbh, $statement, $values );
+}
+
+sub jrpcFetch {
+    my ( $session, $request ) = @_;
+
+    my ( $dbh, $statement, $values ) =
+      _jrpcPrepare( $session, $request, 'fetch' );
 
     local $dbh->{FetchHashKeyName} = "NAME";
 
@@ -507,6 +530,15 @@ sub jrpcFetch {
         rc   => 0,
         data => $data,
     };
+}
+
+sub jrpcDo {
+    my ( $session, $request ) = @_;
+
+    my ( $dbh, $statement, $values ) = _jrpcPrepare( $session, $request, 'do' );
+
+    my $rc = $dbh->do( $statement, { RaiseError => 1, }, @$values );
+    return { rc => $rc, };
 }
 
 sub doQuery {
@@ -691,6 +723,8 @@ sub initPlugin {
 
     Foswiki::Contrib::JsonRpcContrib::registerMethod( "DBIQueryPlugin",
         "fetch", \&jrpcFetch, );
+    Foswiki::Contrib::JsonRpcContrib::registerMethod( "DBIQueryPlugin",
+        "do", \&jrpcDo, );
 
     # Example code of how to get a preference value, register a macro
     # handler and register a RESTHandler (remove code you do not need)
