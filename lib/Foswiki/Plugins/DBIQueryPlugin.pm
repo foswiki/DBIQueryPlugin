@@ -354,7 +354,7 @@ sub expandColumns {
         my $regex = "\%(" . join( "|", keys %$columns ) . ")\%";
         $text =~ s/$regex/$columns->{$1}/ge;
     }
-    $text =~ s/\%DBI_(?:SUBQUERY|EXEC){(.*?)}\%/&subQuery($1, $columns)/ge;
+    $text =~ s/\%DBI_(?:SUBQUERY|EXEC)\{(.*?)\}\%/&subQuery($1, $columns)/ge;
     dprint
 "<<<<< EXPANDED:\n--------------------------------\n$text\n--------------------------------\n";
 
