@@ -538,7 +538,10 @@ sub jrpcDo {
     my ( $dbh, $statement, $values ) = _jrpcPrepare( $session, $request, 'do' );
 
     my $rc = $dbh->do( $statement, { RaiseError => 1, }, @$values );
-    return { rc => $rc, };
+
+    # last_insert_id will be valid for INSERT only.
+    my $insertedID = $dbh->last_insert_id( undef, undef, undef, undef );
+    return { rc => $rc, last_insert_id => $insertedID, };
 }
 
 sub doQuery {
