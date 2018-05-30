@@ -6,6 +6,7 @@ package Foswiki::Plugins::DBIQueryPlugin;
 use strict;
 use warnings;
 use v5.10;
+use utf8;
 
 use Foswiki::Func    ();    # The plugins API
 use Foswiki::Plugins ();    # For the API version
@@ -31,7 +32,7 @@ use Foswiki::Contrib::JsonRpcContrib ();
 #   v1.2.1_001 -> v1.2.2 -> v1.2.2_001 -> v1.2.3
 #   1.21_001 -> 1.22 -> 1.22_001 -> 1.23
 #
-use version; our $VERSION = version->declare('1.06.92');
+use version; our $VERSION = version->declare('1.06.93');
 
 # $RELEASE is used in the "Find More Extensions" automation in configure.
 # It is a manually maintained string used to identify functionality steps.
@@ -46,7 +47,7 @@ use version; our $VERSION = version->declare('1.06.92');
 # It is preferred to keep this compatible with $VERSION. At some future
 # date, Foswiki will deprecate RELEASE and use the VERSION string.
 #
-our $RELEASE = '3 Mar 2018';
+our $RELEASE = '30 May 2018';
 
 # One line description of the module
 our $SHORTDESCRIPTION =
